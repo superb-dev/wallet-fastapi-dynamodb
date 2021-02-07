@@ -1,0 +1,4 @@
+fastapi
+aiobotocore
+boto3
+uvicorn

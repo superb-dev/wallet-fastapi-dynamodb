@@ -35,6 +35,9 @@ class TestWalletAPI:
     async def test_deposit_negative_amount(self, client: AsyncClient) -> None:
         pass
 
+    async def test_deposit_string_amount(self, client: AsyncClient) -> None:
+        pass
+
     async def test_deposit_invalid_wallet(self, client: AsyncClient) -> None:
         pass
 
@@ -56,6 +59,9 @@ class TestWalletAPI:
         pass
 
     async def test_transfer_negative_amount(self, client: AsyncClient) -> None:
+        pass
+
+    async def test_transfer_string_amount(self, client: AsyncClient) -> None:
         pass
 
     async def test_transfer_idempotency(self, client: AsyncClient) -> None:

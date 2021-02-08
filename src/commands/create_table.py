@@ -8,7 +8,8 @@ from storage.storage import Storage
 logger = logging.getLogger(__name__)
 
 
-async def go():
+async def main():
+    logger.info("begin")
     async with AWSManager() as aws:
         table_name = settings.WALLET_TABLE_NAME
 
@@ -18,16 +19,13 @@ async def go():
             logger.info(f"{table_name=} already exists")
             return
 
-        await storage.create_table(read_capacity=10, write_capacity=10)
-
-
-def main():
-    try:
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(go())
-    except KeyboardInterrupt:
-        pass
+        await storage.create_table(
+            read_capacity=settings.AWS_DYNAMODB_READ_CAPACITY,
+            write_capacity=settings.AWS_DYNAMODB_WRITE_CAPACITY,
+        )
+        logger.info("end")
 
 
 if __name__ == "__main__":
-    main()
+    logging.basicConfig(level=settings.LOG_LEVEL.value)
+    asyncio.run(main())

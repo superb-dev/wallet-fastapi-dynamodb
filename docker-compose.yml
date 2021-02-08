@@ -14,11 +14,11 @@ services:
     env_file: .env
     build:
       context: ${PWD}
-      dockerfile: ${PWD}/ci/image_base/Dockerfile
+      dockerfile: ${PWD}/ci/wallet_api.dockerfile
       args:
         PIP_PACKAGES_FILE: ${PIP_PACKAGES_FILE}
-    environment: &pay_env
-      - PAY_AWS__DEFAULT__SERVICES__DYNAMODB__ENDPOINT_URL=http://dynamodb:8000
+    environment: &wallet_env
+      - WALLET_AWS_DYNAMODB_ENDPOINT_URL=http://dynamodb:8000
     command: sh -c "maintenance.sh"
     healthcheck:
       test: ["CMD-SHELL", "test -e .done"]
@@ -32,16 +32,16 @@ services:
     image: wallet
     env_file: .env
     ports:
-      - "9003:9001"
+      - "9001:9001"
     build:
       context: ${PWD}
-      dockerfile: ${PWD}/ci/image_base/Dockerfile
+      dockerfile: ${PWD}/ci/wallet_api.dockerfile
       args:
         PIP_PACKAGES_FILE: ${PIP_PACKAGES_FILE}
-    environment: *pay_env
+    environment: *wallet_env
     healthcheck:
       test: ["CMD-SHELL", "nc -z 127.0.0.1 9001"]
       interval: 2s
       timeout: 2s
       retries: 10
-    command: gunicorn gunicorn_app:app -c /home/httpd/conf/gunicorn/gunicorn.conf.py --workers=${PAY_GUNICORN_WORKERS:-1}
+    command: gunicorn -k uvicorn.workers.UvicornWorker -c /home/httpd/conf/gunicorn/gunicorn.conf.py api.application:app

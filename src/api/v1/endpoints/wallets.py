@@ -29,7 +29,7 @@ async def create_wallet(
             detail="The wallet with for this user id already exists in the system.",
         )
 
-    return schemas.wallet.Wallet(id=wallet.pk, balance=wallet.DEFAULT_BALANCE)
+    return schemas.wallet.Wallet(id=wallet.pk, balance=str(wallet.DEFAULT_BALANCE))
 
 
 @router.get("/me", response_model=schemas.wallet.Wallet)
@@ -48,7 +48,7 @@ async def get_wallet_balance_by_id(wallet: Wallet = Depends(deps.get_wallet)) ->
     Get a specified wallet balance by wallet id.
     """
     balance = await wallet.get_balance()
-    return schemas.wallet.Wallet(id=wallet.pk, balance=balance)
+    return schemas.wallet.Wallet(id=wallet.pk, balance=str(balance))
 
 
 @router.put("/{wallet_id}/deposit")
@@ -62,7 +62,7 @@ async def deposit(
     """
 
     try:
-        await wallet.atomic_deposit(nonce=wallet_in.nonce, amount=wallet_in.amount)
+        await wallet.atomic_deposit(nonce=wallet_in.nonce, amount=wallet_in.int_amount)
     except ConditionalCheckFailedError:
         raise HTTPException(
             status_code=400,
@@ -85,7 +85,7 @@ async def transfer(
     target_wallet = Wallet(pk=target_wallet_id)
 
     await wallet.atomic_transfer(
-        nonce=wallet_in.nonce, amount=wallet_in.amount, target_wallet=target_wallet
+        nonce=wallet_in.nonce, amount=wallet_in.int_amount, target_wallet=target_wallet
     )
 
     # todo: raise not found error

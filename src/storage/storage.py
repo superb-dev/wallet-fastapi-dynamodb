@@ -135,15 +135,15 @@ class Storage:
             else:
                 raise
         else:
-            logger.info(f"Request for {self.table_name} creation sent.")
+            logger.info(f"Request for {self.table_name=} creation sent.")
 
             logger.info("Waiting for table to be created...")
             waiter = self.client.get_waiter("table_exists")
             await waiter.wait(TableName=self.table_name)
-            logger.info(f"{self.table_name} created")
+            logger.info(f"{self.table_name=} created")
 
             if ttl_attribute:
-                logger.info(f"Enable {self.table_name} table ttl")
+                logger.info(f"Enable {self.table_name=} table ttl")
 
                 try:
                     await self.client.update_time_to_live(

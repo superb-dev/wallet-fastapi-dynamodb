@@ -457,7 +457,7 @@ Response:
 PUT `/api/v1/wallets/{wallet:guid}/deposit/`
 ```json5
 {
-    "amount": 100000, // positive non-zero integer
+    "amount": "100000", // positive non-zero integer,
     "nonce": "hex(random(uint64))" // timestamp combined with random(uint64)
 }
 ```
@@ -471,7 +471,7 @@ Response:
 PUT `/api/v1/wallets/{wallet:guid}/transfer/{target_wallet:guid}/`
 ```json5
 {
-    "amount": 123000000, // Price in 1/million of the currency unit.
+    "amount": "123000000", // Price in 1/million of the currency unit.,
     "nonce": "a32fcc113cef99" // timestamp combined with random(uint64), max length 16
 }
 ```
@@ -488,7 +488,7 @@ GET `/api/v1/wallets/{wallet:guid}/balance`
 Response:
 ```json5
 {
-   "balance": 123000000 // Price in 1/million of the currency unit.
+   "balance": "123000000" // Price in 1/million of the currency unit.
 }
 ```
 

@@ -1,7 +1,3 @@
-
-
-
-
 # Glossary
 **Idempotent** - the operation has the same intended effect on the server state, independently of whether it is executed once or multiple times.
 
@@ -22,12 +18,12 @@ seconds using **Python FastAPI** and **AWS DynamoDB**
 # Goals of the System
 
 ## Functional Requirements
-1) Each client in the system has one "wallet" containing money funds.
-2) Information about the wallet and the balance on it is saved.
+1) Each client in the system can have one "wallet" containing money funds.
+2) Wallet with a current balance are saved persistent.
 3) Clients can do money transfers to each other. The system has one currency - USD.
 4) Information about all transactions of the wallet should be stored endlessly.
    
-5) The project is an HTTP API that should support basic operations":
+5) The project is an HTTP API that should support operations:
     1) creating a client wallet;
     2) deposit funds to the client's wallet;
     3) transfer of funds from one wallet to another.
@@ -42,11 +38,11 @@ seconds using **Python FastAPI** and **AWS DynamoDB**
 
 ## Assumptions
 
-1. Data load is predicted to be about 20,000 RPS
+1. Data load is predicted to be about **20 000 RPS**
 
 2. For simplicity, let’s assume our service does not require any user authentication.
 
-3. All transfers and credits are commission-free
+3. All transfers and deposit operations are commission-free
 
 4. We can assume that traffic is predicted at would not spike too high
 
@@ -54,7 +50,7 @@ seconds using **Python FastAPI** and **AWS DynamoDB**
    
 6. Inner security of the data storage is not the purpose of this document. [Amazon QLDB](https://aws.amazon.com/qldb/)
 
-7. Single region
+7. Single AWS region
 
 
 # Capacity Estimation
@@ -75,6 +71,8 @@ Using the information above, let's count the bandwidths capacity
 20 000 request per second * 100 = 2 MB per seconds
 ```
 
+:point_right: Minimal bandwitdh: **2 MB**
+
 ## CPU count
 
 Average DynamoDB response is from 10 to 20 ms for transaction write operations, 
@@ -90,10 +88,11 @@ Thus, minimal CPU configuration:
 20 000 / 2 500 = 8 cores
 ```
 
-
 So, it is recommended to have twice more of this CPU capacity to prevent a peak load,
 also, it is better to use multiple threads (gunicorn or something like that)
 to consume CPU resources more efficiently.
+
+:point_right: Recommended cpu cores: **16**
 
 
 ## Storage estimates
@@ -110,14 +109,16 @@ To store five years of this data, we would need around **157.68TB**.
 That a huge amount of data, but fortunately, we do not need to fetch those transaction data frequently, therefore
 we can store these records more efficiently using data lake (Athena or Redshift) with the Parquet format
 
-According to [the final test](https://blog.cloudera.com/benchmarking-apache-parquet-the-allstate-experience/) 
-disk space results for Parquet compression ratio is 97.56% compression ratio,
+According to [the final test](https://blog.cloudera.com/benchmarking-apache-parquet-the-allstate-experience/) disk space results for Parquet compression ratio is 97.56% compression ratio,
 
 But, let`s estimate as twice more space due to the proposed system will store records on daily basis, thus the compression ratio will be less efficient. 
+
 
 ```
 157.68TB * 0.05 = 7.884TB
 ```
+
+:point_right: Approximate data lake storage size: **10TB**
 
 ## Partitions count
 
@@ -125,24 +126,28 @@ Now let`s estimate the number of the DynamoDB partitions,
 the default partition size is 10 GB at the DynamoDB and the minimal item size is 1kb
 
 :warning: It is planned to move stale data of transaction log from the hot storage (DynamoDB) to the cold (Data lake) after 8 hours.
+:warning: check that DynamoDB minimal item size is 1kb???
 
 ```
 20 000 events * 3 600 seconds * 8 hours = 576 GB ≈ 60 partitions
 ```
 
-:warning: check that DynamoDB minimal item size is 1kb???
 
 
-> Depending on the size and activity level of a table, 
-> the actual delete operation of an expired item can vary. 
-> Because TTL is meant to be a background process, the nature of the capacity 
-> used to expire and delete items via TTL is variable (but free of charge). 
+:point_right: Aproximate DynamoDB partitions: **60**
+
+
+> Depending on the size and activity level of a table,  the actual delete operation of an expired item can vary. 
+> Because TTL is meant to be a background process, the nature of the capacity  used to expire and delete items via TTL is variable (but free of charge). 
 > TTL typically deletes expired items within 48 hours of expiration.
 
 In that system is planned to use wallet_id as the partition key, thus each wallet will use the same partitions all over the time,
 so let's calculate the upper limit of wallet operations, each wallet must not produce more than: 
 
 ```20 000 operations / 60 partitions = 333 operations per seconds for single customer```
+
+
+:point_right: Upper limit of single customer operations: **333**
 
 Obviously, this limit can be increased by more providing more WCU, ex. if we increase WCU from
 20000 to 40000, then limit will be increase corresponded, from 333 to 666 ops, 
@@ -182,8 +187,9 @@ sequenceDiagram
 ```
 
 
-:warning: It is better to set upper limit to the client to the 5 or something like, 
-and warn user that operation unprocessable if limit is reached.
+:warning: It is better to set upper limit to the client to the 5 or something like, and warn user that operation unprocessable if limit is reached.
+
+:point_right: Recommended client retries: **5**
 
 # Components design
 
@@ -218,8 +224,7 @@ Amazon DynamoDB is a key-value and document database that is:
  - ACID transactions
 
 Like most NoSQL databases the DynamoDB is almost schema-less.
-This means that we do not need to define a strict schema for our tables but rather 
-just define the primary key and indexes.
+This means that we do not need to define a strict schema for the table but rather just define the primary key and indexes.
 
 ```mermaid
 classDiagram
@@ -244,14 +249,11 @@ classDiagram
     }
 ```
 
-But, as a general rule, you should maintain [as few tables as possible](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/bp-general-nosql-design.html)
-in a DynamoDB application.
+Meanwhile, it is a general rule, you should maintain [as few tables as possible](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/bp-general-nosql-design.html) in a DynamoDB application.
 
+:point_right: Use single DynamoDB table
 
-
-
-Thus we should combine our data to a single table using different primary key patterns 
-for our tables:
+Thus we should combine our data to a single table using different primary key patterns for our tables:
 
  - `Wallet(pk=f'{wallet_id}#wallet')` 
  - `Transaction(pk=f"{wallet_id}_{nonce}#transaction")`
@@ -307,18 +309,18 @@ DynamoDB rejects the entire TransactWriteItems request if any of the following i
  - No consistent secondary indexes even though transactions are supported
 
 ### Conditional Writes example
-By default, the DynamoDB write operations (PutItem, UpdateItem, DeleteItem) are unconditional:
-Each operation overwrites an existing item that has the specified primary key.
-
-DynamoDB optionally supports conditional writes for these operations. 
+DynamoDB supports conditional writes for `PutItem`, `UpdateItem`, `DeleteItem` operations. 
 A conditional write succeeds only if the item attributes meet one or more expected conditions. Otherwise, it returns an error. 
 Conditional writes are helpful in many situations. 
-For example, you might want a PutItem operation to succeed only if there is not 
-already an item with the same primary key. 
-Or you could prevent a `UpdateItem` operation from modifying an item if one of its 
-attributes have a certain value.
+For example, the system can use a `PutItem` operation to succeed only if there is not already an item with the same primary key. 
+Or you could prevent a `UpdateItem` operation from modifying an item if one of its attributes have a certain value, ex. negative balance
 
-Applying the above to our case, we can update the balance only if it has sufficient funds 
+Applying the above, we can update the balance only if it has sufficient funds or create only are single wallet for user.
+
+:point_right: Wrap all write operations such as **deposit/transfer/create** to the DynamoDB transaction
+:point_right: Use conditional writes to check **wallet id uniqueness**
+:point_right: Use conditional writes to check **that user has enough funds**
+:point_right: Use conditional writes to check **transaction id uniqueness**
 
 ```bash
 
@@ -367,8 +369,6 @@ aws dynamodb transact-write-items \
 
 The system will use the `UpdateItem` operation to implement an atomic counter—a numeric attribute that is incremented, unconditionally, without interfering with other write requests.
 
-In other words, the numeric value increments each time you call UpdateItem.
-
 We might use an atomic counter to update the balance using deposit operation. 
 In this case, your application would increment a numeric value,
 regardless of its current value.
@@ -376,7 +376,8 @@ regardless of its current value.
 If a `UpdateItem` operation fails, the application could not retry 
 the operation, to prevent double deposit.
 We can solve this by adding nonce (nonce check guarantee idempotency).
-
+:point_right: Use **nonce** to guarantee idempotency.
+:point_right: Use a atomic counter for the deposit operation
 
 
 ```bash
@@ -429,9 +430,13 @@ In our case, we have already been using the `nonce` as part of the primary key.
 
 :warning: It is also better to allow users to create multiple wallets than to work on the large ones.
 
+:point_right: Partition key is `wallet_id` and `wallet_id+nonce` for transactions
+
 # API Design
 
-Usually, GUID inside URLs is not a good practice, and it is better to use [technics](https://stackoverflow.com/questions/12924226/alternative-to-guid-with-scalablity-in-mind-and-friendly-url) to generate more friendly URLs, but it is not the goal of this document
+API server need to be capable to generate unique id. Usually, GUID inside URLs is not a good practice, and it is better to use [technics](https://stackoverflow.com/questions/12924226/alternative-to-guid-with-scalablity-in-mind-and-friendly-url) to generate more friendly URLs, but it is not the goal of this document
+
+:point_right: Use GUID to generate unique wallet id.
 
 ### Create wallet
 
@@ -442,7 +447,7 @@ POST `/api/v1/wallets/`
 }
 ```
 
-:exclamation: User `id` should be checked by the `User` microservice for the correctness
+:exclamation: User `id` should be checked for the correctness (out of scope)
 
 Response:
 200:
@@ -502,16 +507,14 @@ Response:
 }
 ```
 
-:warning: Raises not implemented until the system is not supports authorization
+:construction: Raises not implemented until the system is not supports authorization
 
 
 ### API idempotency
-A nonce is an arbitrary number used only once in a communication to prevent 
-replay of the same requests, and will guarantee idempotency.
+A `nonce` is an arbitrary number used only once in a communication to prevent replay of the same requests, and will guarantee idempotency.
 
 
-At the server side, nonce will be stored no more than 2 days, therefore proposed
-to use following nonce generation technic:
+At the server side, nonce will be stored no more than 2 days, therefore proposed to use following nonce generation technic:
 
 ```
                        int64
@@ -519,6 +522,7 @@ to use following nonce generation technic:
 milliseconds from midnight + random.randint(0, 2**31)
 ```
 
+:point_right: nonce will be stored no more than 2 days
 
 Example of nonce generation:
 
@@ -536,27 +540,25 @@ print(f"{nonce:x}")
 # Fault Tolerance
 What happens when our API services go down?
 
-Whenever Wallet API crashes, since the fact that our services are stateless it is safe 
-to reload the application. 
-In order to minimize the outage risks and prevent the possible crashes of the ec2 instance itself,
-we should balance our API across two or more Availability Zones, 
-and it is recommended to have never exceeded 50% of CPU consumed.
+Whenever Wallet API crashes, since the fact that our services are **stateless** it is safe to reload the application. 
 
+:point_right:  Wallet API service must be **stateless**
+In order to minimize the outage risks and prevent the possible crashes of the ec2 instance itself, we should balance our API across two or more Availability Zones, and it is recommended to have never exceeded 50% of CPU consumed.
 
-All of our data is stored and is automatically replicated by the DynamoDB service,
-across multiple Availability Zones in an AWS Region
+:point_right:  Deploy Wallet API across multiple AWS Availability Zones
+
+All of our data is stored and is automatically replicated by the DynamoDB service, across multiple Availability Zones in an AWS Region
 
 # Telemetry
 
 - Number of failed requests
 - Number of successful requests
-- DynamoDB conflicts
-- DynamoDB Internal Error
-- DynamoDB ProvisionedThroughputExceededException
+- Count of **DynamoDB** conflicts
+- Total number of **DynamoDB**  Internal Error
+- Count of **DynamoDB**  ProvisionedThroughputExceededException
 
 
 ## Appendix
  - https://blog.cloudera.com/benchmarking-apache-parquet-the-allstate-experience/
  - https://syslog.ravelin.com/you-probably-shouldnt-use-dynamodb-89143c1287ca
  - https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/WorkingWithItems.html#WorkingWithItems.AtomicCounters
-

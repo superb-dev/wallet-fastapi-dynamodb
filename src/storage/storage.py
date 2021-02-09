@@ -1,15 +1,18 @@
+import functools
 import logging
 from functools import cached_property
-from typing import Any, List, Union
+from typing import Any, List, Tuple, Union
 
 import boto3.dynamodb.types
 import botocore.exceptions
 
 from core.aws import AWSManager
 from core.config import settings
-from storage.exceptions import ConditionalCheckFailedError, UnknownStorageError
+from storage import exceptions
 
 logger = logging.getLogger(__name__)
+
+__all__ = ("ItemBuilder", "Storage")
 
 
 class ItemBuilder:
@@ -21,12 +24,13 @@ class ItemBuilder:
         self.serializer = boto3.dynamodb.types.TypeSerializer()
 
     def put_idempotency_item(self, pk: str, data: dict) -> dict:
-        data[self.pk_field] = pk
+        item = {k: self.serialize(v) for k, v in data.items()}
+        item[self.pk_field] = self.serialize(pk)
 
         return {
             "Put": {
                 "TableName": self.table_name,
-                "Item": {k: self.serialize(v) for k, v in data.items()},
+                "Item": item,
                 "ConditionExpression": "attribute_not_exists(#key)",
                 "ExpressionAttributeNames": {"#key": self.pk_field},
             }
@@ -72,7 +76,31 @@ class ItemBuilder:
         return self.serializer.serialize(attr_value)
 
 
+def handle_botocore_exceptions(warn: Tuple[str, ...] = ()):
+    def inner_handle_botocore_exceptions(func):
+        @functools.wraps(func)
+        async def wrapper(*args, **kwargs):
+            try:
+                return await func(*args, **kwargs)
+            except botocore.exceptions.ClientError as e:
+                if e.response["Error"]["Code"] in warn:
+                    logger.warning(
+                        "Calling function: %r failed: %s", func.__qualname__, str(e)
+                    )
+                else:
+                    logger.exception(
+                        "Calling function: %r failed: %s", func.__qualname__, str(e)
+                    )
+                    raise exceptions.BaseStorageError.from_boto(e) from e
+
+        return wrapper
+
+    return inner_handle_botocore_exceptions
+
+
 class Storage:
+    """DynamoDB Communication class"""
+
     PK_FIELD = "pk"
 
     @cached_property
@@ -89,6 +117,7 @@ class Storage:
 
         self.item_builder = ItemBuilder(table_name=table_name, pk_field=self.PK_FIELD)
 
+    @handle_botocore_exceptions()
     async def get(self, pk: str, fields: Union[List[str], str] = None) -> dict:
         kwargs = {
             "TableName": self.table_name,
@@ -103,61 +132,45 @@ class Storage:
 
         response = await self.client.get_item(**kwargs)
 
-        return {
-            k: self.item_builder.deserialize(v) for k, v in response["Item"].items()
-        }
+        if item := response.get("Item"):
+            return {
+                k: self.item_builder.deserialize(v)
+                for k, v in item.items()
+                if k != self.PK_FIELD
+            }
+        else:
+            raise exceptions.ObjectNotFoundError(f"Object with {pk=} was not found")
+
+    @handle_botocore_exceptions()
+    async def create(
+        self,
+        pk: str,
+        data: dict,
+    ):
+        item = self.item_builder.put_idempotency_item(pk=pk, data=data)
+        await self.client.put_item(**item["Put"])
 
     async def table_exists(self):
         existing_tables = (await self.client.list_tables())["TableNames"]
         return self.table_name in existing_tables
 
+    @handle_botocore_exceptions()
     async def create_table(
         self, read_capacity: int = 1, write_capacity: int = 1, ttl_attribute: str = None
     ) -> None:
-        try:
-            await self.client.create_table(
-                TableName=self.table_name,
-                KeySchema=[{"AttributeName": self.PK_FIELD, "KeyType": "HASH"}],
-                AttributeDefinitions=[
-                    {"AttributeName": self.PK_FIELD, "AttributeType": "S"}
-                ],
-                ProvisionedThroughput={
-                    "ReadCapacityUnits": read_capacity,
-                    "WriteCapacityUnits": write_capacity,
-                },
-                Tags=[
-                    {"Key": "Project", "Value": settings.PROJECT_NAME},
-                ],
-            )
-        except botocore.exceptions.ClientError as e:
-            if e.response["Error"]["Code"] == "ResourceInUseException":
-                logger.warning("Table already exists", exc_info=e)
-            else:
-                raise
-        else:
-            logger.info(f"Request for {self.table_name=} creation sent.")
+        await self._create_table(read_capacity, write_capacity)
 
-            logger.info("Waiting for table to be created...")
-            waiter = self.client.get_waiter("table_exists")
-            await waiter.wait(TableName=self.table_name)
-            logger.info(f"{self.table_name=} created")
+        logger.info("Waiting for table to be created...")
+        waiter = self.client.get_waiter("table_exists")
 
-            if ttl_attribute:
-                logger.info(f"Enable {self.table_name=} table ttl")
+        await waiter.wait(TableName=self.table_name)
+        logger.info(f"{self.table_name=} created")
 
-                try:
-                    await self.client.update_time_to_live(
-                        TableName=self.table_name,
-                        TimeToLiveSpecification={
-                            "Enabled": True,
-                            "AttributeName": ttl_attribute,
-                        },
-                    )
-                except botocore.exceptions.ClientError as e:
-                    logger.error("Error setting TTL on table", exc_info=e)
-                    raise
+        if ttl_attribute:
+            await self._update_time_to_live(ttl_attribute)
 
-    async def delete_table(self) -> None:
+    @handle_botocore_exceptions()
+    async def drop_table(self) -> None:
         await self.client.delete_table(TableName=self.table_name)
 
         logger.info(f"Request for {self.table_name} deletion sent.")
@@ -168,11 +181,14 @@ class Storage:
         logger.info(f"Table {self.table_name} dropped")
 
     async def delete(self, pk: str):
-        await self.client.delete_item(
-            TableName=self.table_name,
-            Key={self.PK_FIELD: self.item_builder.serialize(pk)},
-        )
+        try:
+            await self._delete(pk=pk)
+        except exceptions.ConditionalCheckFailedError as e:
+            raise exceptions.ObjectNotFoundError(
+                f"Object with {pk} was not found"
+            ) from e
 
+    @handle_botocore_exceptions()
     async def transaction_write_items(self, items):
         try:
             return await self.client.transact_write_items(TransactItems=items)
@@ -181,14 +197,49 @@ class Storage:
             # https://docs.amazonaws.cn/en_us/amazondynamodb/latest/APIReference/API_TransactWriteItems.html
 
             for error in e.response["CancellationReasons"]:
+
                 if error["Code"] == "ConditionalCheckFailed":
-                    raise ConditionalCheckFailedError(error["Message"])
+                    raise exceptions.ConditionalCheckFailedError(error["Message"])
                 if error["Code"] == "TransactionConflict":
-                    raise ConditionalCheckFailedError(error["Message"])
+                    raise exceptions.ConditionalCheckFailedError(error["Message"])
 
             # todo: parse other exception types
-            raise UnknownStorageError()
+            raise exceptions.UnknownStorageError() from e
 
-        except botocore.exceptions.ClientError as e:
-            logger.exception(f"Request failed: {str(e)}")
-            raise UnknownStorageError()
+    @handle_botocore_exceptions(warn=("ResourceInUseException",))
+    async def _create_table(self, read_capacity, write_capacity):
+        await self.client.create_table(
+            TableName=self.table_name,
+            KeySchema=[{"AttributeName": self.PK_FIELD, "KeyType": "HASH"}],
+            AttributeDefinitions=[
+                {"AttributeName": self.PK_FIELD, "AttributeType": "S"}
+            ],
+            ProvisionedThroughput={
+                "ReadCapacityUnits": read_capacity,
+                "WriteCapacityUnits": write_capacity,
+            },
+            Tags=[
+                {"Key": "Project", "Value": settings.PROJECT_NAME},
+            ],
+        )
+
+        logger.info(f"Request for {self.table_name=} creation sent.")
+
+    @handle_botocore_exceptions()
+    async def _update_time_to_live(self, ttl_attribute):
+        await self.client.update_time_to_live(
+            TableName=self.table_name,
+            TimeToLiveSpecification={
+                "Enabled": True,
+                "AttributeName": ttl_attribute,
+            },
+        )
+
+    @handle_botocore_exceptions()
+    async def _delete(self, pk: str):
+        await self.client.delete_item(
+            TableName=self.table_name,
+            Key={self.PK_FIELD: self.item_builder.serialize(pk)},
+            ConditionExpression="attribute_exists(#key)",
+            ExpressionAttributeNames={"#key": self.PK_FIELD},
+        )

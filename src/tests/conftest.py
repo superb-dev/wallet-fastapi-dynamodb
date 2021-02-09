@@ -15,16 +15,22 @@ async def wallet(aws) -> Wallet:
     yield Wallet(aws=aws)
 
 
-@pytest.fixture()
+@pytest.fixture(scope="session")
+def init_settings():
+    settings.AWS_DYNAMODB_READ_CAPACITY = 10
+    settings.AWS_DYNAMODB_WRITE_CAPACITY = 10
+    settings.AWS_CLIENT_PARAMETER_VALIDATION = True
+    settings.WALLET_TABLE_NAME = "test"
+
+
+@pytest.fixture(scope="session")
 async def storage(aws) -> Storage:
-    yield Storage(aws=aws, table_name=settings.WALLET_TABLE_NAME)
-
-
-@pytest.fixture(autouse=True, scope="session")
-async def dynamodb(storage):
+    storage = Storage(aws=aws, table_name=settings.WALLET_TABLE_NAME)
     await storage.create_table()
-
-    storage.delete_table()
+    try:
+        yield storage
+    finally:
+        await storage.drop_table()
 
 
 @pytest.fixture(scope="session")

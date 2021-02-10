@@ -1,8 +1,7 @@
-from typing import Optional
+from typing import Dict, List, Optional
 
-from fastapi import FastAPI
-from starlette import responses
-from starlette.exceptions import HTTPException
+from fastapi import FastAPI, requests
+from starlette import routing
 
 from api.v1.api import api_router
 from core.aws import AWSManager
@@ -12,29 +11,28 @@ app = FastAPI(
     title=settings.PROJECT_NAME, openapi_url=f"{settings.API_V1_STR}/openapi.json"
 )
 
+
+@app.get("/")
+async def root(request: requests.Request) -> List[Dict[str, str]]:
+    url_list = []
+    for route in app.routes:
+        if isinstance(route, routing.Route):
+            url_list.append(
+                {
+                    "path": str(request.base_url.replace(path=route.path)),
+                    "name": route.name,
+                }
+            )
+
+    return url_list
+
+
 app.include_router(api_router, prefix=settings.API_V1_STR)
-
-
-@app.exception_handler(HTTPException)
-async def custom_http_exception_handler(request, exc):
-    if exc.status_code == 404:
-        url_list = [
-            {"path": str(request.base_url.replace(path=route.path)), "name": route.name}
-            for route in app.routes
-        ]
-
-        return responses.JSONResponse(url_list)
-
-    if exc.status_code in {204, 304}:
-        return responses.Response(b"", status_code=exc.status_code)
-    return responses.PlainTextResponse(exc.detail, status_code=exc.status_code)
-
-
 aws_manager: Optional[AWSManager] = None
 
 
 @app.on_event("startup")
-async def initialize_aws_manager():
+async def initialize_aws_manager() -> None:
     # https://docs.aiohttp.org/en/stable/client_reference.html
     # it is suggested you use a single session for the lifetime of
     # your application to benefit from connection pooling.
@@ -46,7 +44,7 @@ async def initialize_aws_manager():
 
 
 @app.on_event("shutdown")
-async def close_aws_manager():
+async def close_aws_manager() -> None:
     global aws_manager
     if aws_manager is not None:
         await aws_manager.close()

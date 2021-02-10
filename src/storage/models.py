@@ -3,7 +3,7 @@ import datetime
 import enum
 import uuid
 from functools import cached_property
-from typing import Optional, Union
+from typing import Any, Dict, Optional, Union
 
 from core.aws import AWSManager
 from core.config import settings
@@ -23,23 +23,21 @@ class Transaction:
     wallet: str
     nonce: Optional[str]
     type: TransactionType
-    data: dict
+    data: Dict[str, Any]
 
     @cached_property
     def ttl(self) -> int:
-        return (
-            int(datetime.datetime.utcnow().timestamp())
-            + settings.WALLET_TRANSACTION_TTL
-        )
+        now = int(datetime.datetime.utcnow().timestamp())
+        return now + int(settings.WALLET_TRANSACTION_TTL)
 
     @property
-    def storage_pk(self):
+    def storage_pk(self) -> str:
         if self.nonce:
             return f"{self.wallet}_{self.nonce}{self.TRANSACTION_KEY_POSTFIX}"
         else:
             return f"{self.wallet}{self.TRANSACTION_KEY_POSTFIX}"
 
-    def as_dict(self):
+    def as_dict(self) -> Dict[str, Any]:
         return {"ttl": self.ttl, "type": self.type.value, "data": self.data}
 
 
@@ -53,20 +51,20 @@ class Wallet:
 
     def __init__(
         self,
-        aws: AWSManager = None,
-        table_name: str = None,
-        pk: Union[uuid.UUID, str] = None,
+        aws: Optional[AWSManager] = None,
+        table_name: Optional[str] = None,
+        pk: Optional[Union[uuid.UUID, str]] = None,
     ):
 
         if table_name is None:
             table_name = settings.WALLET_TABLE_NAME
 
-        self._table_name = table_name
-        self._aws = aws
+        self._table_name: str = table_name
+        self._aws: Optional[AWSManager] = aws
 
         if isinstance(pk, uuid.UUID):
             pk = str(pk)
-        self._pk = pk
+        self._pk: Optional[str] = pk
 
     @property
     def pk(self) -> str:
@@ -76,9 +74,11 @@ class Wallet:
         return self._pk
 
     @cached_property
-    def storage(self) -> Optional[Storage]:
-        if self._aws:
-            return Storage(aws=self._aws, table_name=self._table_name)
+    def storage(self) -> Storage:
+        if not self._aws:
+            raise ValueError("AWS manager was not set")
+
+        return Storage(aws=self._aws, table_name=self._table_name)
 
     @property
     def storage_pk(self) -> str:
@@ -128,7 +128,9 @@ class Wallet:
 
         return int(response["balance"])
 
-    async def atomic_transfer(self, nonce: str, amount: int, target_wallet: "Wallet"):
+    async def atomic_transfer(
+        self, nonce: str, amount: int, target_wallet: "Wallet"
+    ) -> None:
         """Transfer user funds from one wallet to another"""
 
         if target_wallet == self:
@@ -141,7 +143,7 @@ class Wallet:
             data={"amount": amount, "target_wallet": target_wallet.pk},
         )
 
-        response = await self.storage.transaction_write_items(
+        await self.storage.transaction_write_items(
             items=[
                 self.storage.item_builder.put_idempotency_item(
                     pk=transaction.storage_pk, data=transaction.as_dict()
@@ -157,8 +159,6 @@ class Wallet:
             ]
         )
 
-        return response
-
     async def atomic_deposit(self, nonce: str, amount: int) -> None:
         transaction = Transaction(
             type=TransactionType.DEPOSIT,
@@ -167,7 +167,7 @@ class Wallet:
             wallet=self.pk,
         )
 
-        response = await self.storage.transaction_write_items(
+        await self.storage.transaction_write_items(
             items=[
                 self.storage.item_builder.put_idempotency_item(
                     pk=transaction.storage_pk,
@@ -181,12 +181,10 @@ class Wallet:
             ]
         )
 
-        return response
-
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"Wallet(pk={self.pk})"
 
-    def __eq__(self, other: "Wallet"):
+    def __eq__(self, other: object) -> bool:
         if not isinstance(other, Wallet):
             return False
 

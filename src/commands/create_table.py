@@ -8,7 +8,7 @@ from storage.storage import Storage
 logger = logging.getLogger(__name__)
 
 
-async def main():
+async def main() -> None:
     logger.info("begin")
     async with AWSManager() as aws:
         table_name = settings.WALLET_TABLE_NAME

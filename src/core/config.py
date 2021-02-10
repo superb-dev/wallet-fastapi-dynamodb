@@ -1,6 +1,6 @@
 import enum
 
-from pydantic import AnyHttpUrl, BaseSettings
+import pydantic
 
 
 class LogLevel(str, enum.Enum):
@@ -11,7 +11,7 @@ class LogLevel(str, enum.Enum):
     CRITICAL = "CRITICAL"
 
 
-class Settings(BaseSettings):
+class Settings(pydantic.BaseSettings):
     API_V1_STR: str = "/api/v1"
 
     PROJECT_NAME: str = "wallet"
@@ -29,9 +29,9 @@ class Settings(BaseSettings):
     # The name of the region associated with the AWS client.
     AWS_REGION_NAME: str = "us-west-2"
     # The DYNAMODB endpoint (only for testing) keep it empty for production
-    AWS_DYNAMODB_ENDPOINT_URL: AnyHttpUrl = (
-        "http://127.0.0.1:8001"  # "http://dynamodb:8000"
-    )
+    AWS_DYNAMODB_ENDPOINT_URL: pydantic.AnyHttpUrl = pydantic.Field(
+        "http://127.0.0.1:8001"
+    )  # "http://dynamodb:8000"
 
     # represents one strongly consistent read per second, or two eventually consistent
     # reads per second, for an item up to 4 KB in size.

@@ -1,4 +1,5 @@
 import uuid
+from typing import Optional
 
 from fastapi import Depends
 
@@ -12,5 +13,7 @@ def get_aws_manager() -> AWSManager:
     return aws_manager
 
 
-def get_wallet(wallet_id: uuid.UUID = None, aws: AWSManager = Depends(get_aws_manager)):
+def get_wallet(
+    wallet_id: Optional[uuid.UUID] = None, aws: AWSManager = Depends(get_aws_manager)
+) -> Wallet:
     return Wallet(aws=aws, pk=wallet_id)

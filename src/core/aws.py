@@ -1,4 +1,6 @@
 from contextlib import AsyncExitStack
+from types import TracebackType
+from typing import Optional, Type
 
 import aiobotocore
 import aiobotocore.client
@@ -17,9 +19,9 @@ class AWSManager:
 
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._exit_stack = AsyncExitStack()
-        self._dynamodb_client = None
+        self._dynamodb_client: Optional[aiobotocore.client.AioBaseClient] = None
         self.initialized = False
 
     @property
@@ -32,11 +34,11 @@ class AWSManager:
 
         return self._dynamodb_client
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> "AWSManager":
         await self.initialize()
         return self
 
-    async def initialize(self):
+    async def initialize(self) -> None:
         if self.initialized:
             raise ValueError("Already initialized.")
 
@@ -52,12 +54,17 @@ class AWSManager:
             )
         )
 
-    async def close(self):
+    async def close(self) -> None:
         if self.initialized:
             self.initialized = False
             await self._exit_stack.__aexit__(None, None, None)
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(
+        self,
+        exc_type: Optional[Type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[TracebackType],
+    ) -> None:
         if self.initialized:
             self.initialized = False
             await self._exit_stack.__aexit__(exc_type, exc_val, exc_tb)

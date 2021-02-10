@@ -40,8 +40,8 @@ async def aws() -> AWSManager:
 
 
 @pytest.fixture(scope="module")
-def client() -> AsyncClient:
-    with AsyncClient(app=app, base_url="http://test") as c:
+async def client() -> AsyncClient:
+    async with AsyncClient(app=app, base_url="http://test") as c:
         yield c
 
 

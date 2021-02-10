@@ -1,9 +1,11 @@
+from typing import Set
+
 import botocore.exceptions
 
 
 class BaseStorageError(Exception):
     code = 500
-    botocore_code = {}
+    botocore_code: Set[str] = set()
 
     @classmethod
     def from_boto(

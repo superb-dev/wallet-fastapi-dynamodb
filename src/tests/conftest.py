@@ -1,4 +1,5 @@
 import asyncio
+import uuid
 
 import pytest
 from httpx import AsyncClient
@@ -11,8 +12,29 @@ from storage.storage import Storage
 
 
 @pytest.fixture()
-async def wallet(aws) -> Wallet:
+async def raw_wallet(aws, storage) -> Wallet:
     yield Wallet(aws=aws)
+
+
+@pytest.fixture()
+async def wallet_factory(aws, storage):
+    created = []
+
+    async def create_wallet():
+        raw_wallet = Wallet(aws=aws)
+        user_id = str(uuid.uuid4())
+        await raw_wallet.create_wallet(user_id=user_id)
+        return raw_wallet
+
+    yield create_wallet
+
+    for wallet in created:
+        await wallet.storage.delete(raw_wallet.storage_pk)
+
+
+@pytest.fixture()
+async def wallet(wallet_factory) -> Wallet:
+    yield await wallet_factory()
 
 
 @pytest.fixture(scope="session")

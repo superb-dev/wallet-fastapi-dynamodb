@@ -7,6 +7,7 @@ from typing import Any, Dict, Optional, Union
 
 from core.aws import AWSManager
 from core.config import settings
+from storage import exceptions
 from storage.storage import Storage
 
 
@@ -32,10 +33,14 @@ class Transaction:
 
     @property
     def storage_pk(self) -> str:
-        if self.nonce:
-            return f"{self.wallet}_{self.nonce}{self.TRANSACTION_KEY_POSTFIX}"
+        return self.get_storage_pk(wallet=self.wallet, nonce=self.nonce)
+
+    @classmethod
+    def get_storage_pk(cls, wallet: str, nonce: Optional[str]) -> str:
+        if nonce:
+            return f"{wallet}_{nonce}{cls.TRANSACTION_KEY_POSTFIX}"
         else:
-            return f"{self.wallet}{self.TRANSACTION_KEY_POSTFIX}"
+            return f"{wallet}{cls.TRANSACTION_KEY_POSTFIX}"
 
     def as_dict(self) -> Dict[str, Any]:
         return {"ttl": self.ttl, "type": self.type.value, "data": self.data}
@@ -70,11 +75,13 @@ class Wallet:
     def pk(self) -> str:
         """Unique wallet identifier"""
         if not self._pk:
-            raise ValueError("Create wallet first")
+            raise exceptions.WalletDoesNotExistsError("Create wallet first")
+
         return self._pk
 
     @cached_property
     def storage(self) -> Storage:
+        """Inner CRUD storage"""
         if not self._aws:
             raise ValueError("AWS manager was not set")
 
@@ -85,11 +92,10 @@ class Wallet:
         """Storage representation of the unique wallet identifier"""
         return f"{self.pk}{self.WALLET_KEY_POSTFIX}"
 
-    async def create_wallet(self, user_id: uuid.UUID) -> None:
+    async def create_wallet(self, user_id: str) -> None:
         """Create wallet for specified user.
         User can have only one wallet at the system.
         """
-
         self._pk = str(uuid.uuid4())
 
         transaction = Transaction(
@@ -102,34 +108,48 @@ class Wallet:
         # todo: create separate user storage
         user_pk = f"{user_id}{self.USER_KEY_POSTFIX}"
 
-        # todo: return custom errors exceptions based, such as WalletExists,
-        # UserAlreadyHasWallet, nonce
-        await self.storage.transaction_write_items(
-            items=[
-                # create transaction record
-                self.storage.item_builder.put_idempotency_item(
-                    pk=transaction.storage_pk, data=transaction.as_dict()
-                ),
-                # create wallet
-                self.storage.item_builder.put_idempotency_item(
-                    pk=self.storage_pk, data={self.BALANCE_KEY: self.DEFAULT_BALANCE}
-                ),
-                # create link between wallet and user
-                self.storage.item_builder.put_idempotency_item(
-                    pk=user_pk, data={self.USER_WALLET_KEY: self.pk}
-                ),
-            ]
-        )
+        try:
+            await self.storage.transaction_write_items(
+                items=[
+                    # create transaction record
+                    self.storage.item_builder.put_idempotency_item(
+                        pk=transaction.storage_pk, data=transaction.as_dict()
+                    ),
+                    # create wallet
+                    self.storage.item_builder.put_idempotency_item(
+                        pk=self.storage_pk,
+                        data={self.BALANCE_KEY: self.DEFAULT_BALANCE},
+                    ),
+                    # create link between wallet and user
+                    self.storage.item_builder.put_idempotency_item(
+                        pk=user_pk, data={self.USER_WALLET_KEY: self.pk}
+                    ),
+                ]
+            )
+        except exceptions.TransactionMultipleError as e:
+            if e.errors[0]:
+                raise exceptions.WalletTransactionAlreadyRegisteredError(
+                    str(e.errors[0])
+                )
+
+            raise exceptions.WalletAlreadyExistsError(
+                f"Wallet already exists for the user {user_pk}"
+            )
 
     async def get_balance(self) -> int:
         """Return actually user balance"""
         # todo: support both strong and eventual consistency
-        response = await self.storage.get(pk=self.storage_pk, fields="balance")
+        try:
+            response = await self.storage.get(pk=self.storage_pk, fields="balance")
+        except exceptions.ObjectNotFoundError:
+            raise exceptions.WalletDoesNotExistsError(
+                f"Wallet with {self.pk} does not exists"
+            )
 
         return int(response["balance"])
 
     async def atomic_transfer(
-        self, nonce: str, amount: int, target_wallet: "Wallet"
+        self, amount: int, target_wallet: "Wallet", nonce: str
     ) -> None:
         """Transfer user funds from one wallet to another"""
 
@@ -139,27 +159,42 @@ class Wallet:
         transaction = Transaction(
             wallet=self.pk,
             nonce=nonce,
-            type=TransactionType.DEPOSIT,
+            type=TransactionType.TRANSFER,
             data={"amount": amount, "target_wallet": target_wallet.pk},
         )
 
-        await self.storage.transaction_write_items(
-            items=[
-                self.storage.item_builder.put_idempotency_item(
-                    pk=transaction.storage_pk, data=transaction.as_dict()
-                ),
-                self.storage.item_builder.update_atomic_decrement(
-                    pk=self.storage_pk, update_key=self.BALANCE_KEY, amount=amount
-                ),
-                self.storage.item_builder.update_atomic_increment(
-                    pk=target_wallet.storage_pk,
-                    update_key=self.BALANCE_KEY,
-                    amount=amount,
-                ),
-            ]
-        )
+        try:
+            await self.storage.transaction_write_items(
+                items=[
+                    self.storage.item_builder.put_idempotency_item(
+                        pk=transaction.storage_pk, data=transaction.as_dict()
+                    ),
+                    self.storage.item_builder.update_atomic_decrement(
+                        pk=self.storage_pk, update_key=self.BALANCE_KEY, amount=amount
+                    ),
+                    self.storage.item_builder.update_atomic_increment(
+                        pk=target_wallet.storage_pk,
+                        update_key=self.BALANCE_KEY,
+                        amount=amount,
+                    ),
+                ]
+            )
+        except exceptions.TransactionMultipleError as e:
+            if e.errors[0]:
+                raise exceptions.WalletTransactionAlreadyRegisteredError(
+                    f"Transaction with nonce {nonce} already registered."
+                )
 
-    async def atomic_deposit(self, nonce: str, amount: int) -> None:
+            # todo: check wallet does not exists
+            if e.errors[1]:
+                raise exceptions.WalletInsufficientFundsError(str(e.errors[1]))
+
+            if e.errors[2]:
+                raise exceptions.WalletDoesNotExistsError(str(e.errors[1]))
+
+            raise exceptions.BaseWalletError(str(e))
+
+    async def atomic_deposit(self, amount: int, nonce: str) -> None:
         transaction = Transaction(
             type=TransactionType.DEPOSIT,
             data={"amount": amount},
@@ -167,25 +202,35 @@ class Wallet:
             wallet=self.pk,
         )
 
-        await self.storage.transaction_write_items(
-            items=[
-                self.storage.item_builder.put_idempotency_item(
-                    pk=transaction.storage_pk,
-                    data=transaction.as_dict(),
-                ),
-                self.storage.item_builder.update_atomic_increment(
-                    pk=self.storage_pk,
-                    update_key=self.BALANCE_KEY,
-                    amount=amount,
-                ),
-            ]
-        )
+        try:
+            await self.storage.transaction_write_items(
+                items=[
+                    self.storage.item_builder.put_idempotency_item(
+                        pk=transaction.storage_pk,
+                        data=transaction.as_dict(),
+                    ),
+                    self.storage.item_builder.update_atomic_increment(
+                        pk=self.storage_pk,
+                        update_key=self.BALANCE_KEY,
+                        amount=amount,
+                    ),
+                ]
+            )
+        except exceptions.TransactionMultipleError as e:
+            if e.errors[0]:
+                raise exceptions.WalletTransactionAlreadyRegisteredError(
+                    f"Transaction with nonce {nonce} already registered."
+                )
+
+            raise exceptions.WalletDoesNotExistsError(
+                f"Wallet with {self.pk} does not exists"
+            )
 
     def __repr__(self) -> str:
-        return f"Wallet(pk={self.pk})"
+        return f"Wallet(pk={self._pk})"
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Wallet):
             return False
 
-        return self.pk == other.pk
+        return self._pk == other._pk

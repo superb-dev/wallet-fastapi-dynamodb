@@ -200,21 +200,7 @@ class Storage:
 
     @handle_botocore_exceptions()
     async def transaction_write_items(self, items: List[Dict[str, Any]]) -> None:
-        try:
-            await self.client.transact_write_items(TransactItems=items)
-        except self.client.exceptions.TransactionCanceledException as e:
-            logger.warning(f"Conditions failed: {str(e)}")
-            # https://docs.amazonaws.cn/en_us/amazondynamodb/latest/APIReference/API_TransactWriteItems.html
-
-            for error in e.response["CancellationReasons"]:
-
-                if error["Code"] == "ConditionalCheckFailed":
-                    raise exceptions.ConditionalCheckFailedError(error["Message"])
-                if error["Code"] == "TransactionConflict":
-                    raise exceptions.ConditionalCheckFailedError(error["Message"])
-
-            # todo: parse other exception types
-            raise exceptions.UnknownStorageError() from e
+        await self.client.transact_write_items(TransactItems=items)
 
     @handle_botocore_exceptions(warn=("ResourceInUseException",))
     async def _create_table(self, read_capacity: int, write_capacity: int) -> None:

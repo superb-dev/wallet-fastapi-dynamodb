@@ -16,7 +16,8 @@ app = FastAPI(
 async def root(request: requests.Request) -> List[Dict[str, str]]:
     url_list = []
     for route in app.routes:
-        if isinstance(route, routing.Route):
+        # do not add self to the list of routes
+        if isinstance(route, routing.Route) and route.name != root.__name__:
             url_list.append(
                 {
                     "path": str(request.base_url.replace(path=route.path)),

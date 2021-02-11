@@ -24,6 +24,8 @@ class AWSManager:
         self._dynamodb_client: Optional[aiobotocore.client.AioBaseClient] = None
         self.initialized = False
 
+        self._session: Optional[aiobotocore.AioSession] = None
+
     @property
     def dynamodb(self) -> aiobotocore.client.AioBaseClient:
         if self._dynamodb_client is None or not self.initialized:
@@ -73,17 +75,18 @@ class AWSManager:
         """
         Return a session object. Creates new if not exists.
         """
-        session = aiobotocore.get_session()
+        if not self._session:
+            self._session = aiobotocore.get_session()
 
-        # https://botocore.amazonaws.com/v1/documentation/api/latest/reference/config.html
-        session.set_default_client_config(
-            Config(
-                retries={"max_attempts": settings.AWS_CLIENT_MAX_ATTEMPTS},
-                connect_timeout=settings.AWS_CLIENT_CONNECT_TIMEOUT,
-                read_timeout=settings.AWS_CLIENT_READ_TIMEOUT,
-                max_pool_connections=settings.AWS_CLIENT_MAX_POOL_CONNECTIONS,
-                parameter_validation=settings.AWS_CLIENT_PARAMETER_VALIDATION,
+            # https://botocore.amazonaws.com/v1/documentation/api/latest/reference/config.html
+            self._session.set_default_client_config(
+                Config(
+                    retries={"max_attempts": settings.AWS_CLIENT_MAX_ATTEMPTS},
+                    connect_timeout=settings.AWS_CLIENT_CONNECT_TIMEOUT,
+                    read_timeout=settings.AWS_CLIENT_READ_TIMEOUT,
+                    max_pool_connections=settings.AWS_CLIENT_MAX_POOL_CONNECTIONS,
+                    parameter_validation=settings.AWS_CLIENT_PARAMETER_VALIDATION,
+                )
             )
-        )
 
-        return session
+        return self._session

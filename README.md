@@ -468,7 +468,7 @@ PUT `/api/v1/wallets/{wallet:guid}/deposit/`
 ```
 
 Response:
-200: Empty
+204: Empty
 :warning: should guarantee **idempotency**
 
 ### Transfer
@@ -482,7 +482,7 @@ PUT `/api/v1/wallets/{wallet:guid}/transfer/{target_wallet:guid}/`
 ```
 
 Response:
-200: Empty
+204: Empty
 
 :warning: should guarantee **idempotency**
 

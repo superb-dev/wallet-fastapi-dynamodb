@@ -48,6 +48,7 @@ class ItemBuilder:
                 "TableName": self.table_name,
                 "Key": {self.pk_field: self.serialize(pk)},
                 "UpdateExpression": "SET #key = #key + :n",
+                "ConditionExpression": "attribute_exists(#key)",
                 "ExpressionAttributeValues": {
                     ":n": self.serialize(amount),
                 },

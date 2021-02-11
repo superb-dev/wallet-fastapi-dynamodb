@@ -51,6 +51,11 @@ class ValidationError(BaseStorageError):
     code = 500
 
 
+class TransactionConflictError(BaseStorageError):
+    code = 409
+    botocore_code = {"TransactionConflictException"}
+
+
 class TransactionMultipleError(BaseStorageError):
     # https://docs.amazonaws.cn/en_us/amazondynamodb/latest/APIReference/API_TransactWriteItems.html
     botocore_code = {"TransactionCanceledException"}

@@ -4,7 +4,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 
 import schemas.wallet
-from api import deps
+from api import dependencies
 from storage.exceptions import ConditionalCheckFailedError
 from storage.models import Wallet
 
@@ -14,7 +14,7 @@ router = APIRouter()
 @router.post("/", response_model=schemas.wallet.Wallet)
 async def create_wallet(
     *,
-    wallet: Wallet = Depends(deps.get_wallet),
+    wallet: Wallet = Depends(dependencies.get_wallet),
     wallet_in: schemas.wallet.WalletCreate,
 ) -> Any:
     """
@@ -22,7 +22,7 @@ async def create_wallet(
     """
 
     try:
-        await wallet.create_wallet(user_id=wallet_in.user_id)
+        await wallet.create_wallet(user_id=str(wallet_in.user_id))
     except ConditionalCheckFailedError:
         raise HTTPException(
             status_code=400,
@@ -43,7 +43,9 @@ def get_user_wallet() -> Any:
 
 
 @router.get("/{wallet_id}", response_model=schemas.wallet.Wallet)
-async def get_wallet_balance_by_id(wallet: Wallet = Depends(deps.get_wallet)) -> Any:
+async def get_wallet_balance_by_id(
+    wallet: Wallet = Depends(dependencies.get_wallet),
+) -> Any:
     """
     Get a specified wallet balance by wallet id.
     """
@@ -51,10 +53,12 @@ async def get_wallet_balance_by_id(wallet: Wallet = Depends(deps.get_wallet)) ->
     return schemas.wallet.Wallet(id=wallet.pk, balance=str(balance))
 
 
-@router.put("/{wallet_id}/deposit")
-async def deposit(
+@router.put(
+    "/{wallet_id}/deposit",
+)
+async def wallet_deposit(
     *,
-    wallet: Wallet = Depends(deps.get_wallet),
+    wallet: Wallet = Depends(dependencies.get_wallet),
     wallet_in: schemas.wallet.WalletDeposit,
 ) -> Any:
     """
@@ -73,10 +77,10 @@ async def deposit(
 @router.put(
     "/{wallet_id}/transfer/{target_wallet_id}", response_model=schemas.wallet.Wallet
 )
-async def transfer(
+async def wallet_transfer(
     *,
     target_wallet_id: uuid.UUID,
-    wallet: Wallet = Depends(deps.get_wallet),
+    wallet: Wallet = Depends(dependencies.get_wallet),
     wallet_in: schemas.wallet.WalletTransfer,
 ) -> Any:
     """

@@ -1,18 +1,25 @@
 from typing import Dict, List, Optional
 
-from fastapi import FastAPI, requests
+import fastapi
+from fastapi import FastAPI, requests, responses
 from starlette import routing
 
 from api.v1.api import api_router
 from core.aws import AWSManager
 from core.config import settings
+from storage import exceptions
 
 app = FastAPI(
-    title=settings.PROJECT_NAME, openapi_url=f"{settings.API_V1_STR}/openapi.json"
+    title=settings.PROJECT_NAME,
+    description="The Wallet API is an simple payments system with capabilities to "
+    "transfer funds, deposit, and check balance. "
+    "Build to be highly robust and highly available.",
+    version=settings.PROJECT_VERSION,
+    redoc_url=None,
 )
 
 
-@app.get("/")
+@app.get("/", include_in_schema=False)
 async def root(request: requests.Request) -> List[Dict[str, str]]:
     url_list = []
     for route in app.routes:
@@ -26,6 +33,14 @@ async def root(request: requests.Request) -> List[Dict[str, str]]:
             )
 
     return url_list
+
+
+@app.exception_handler(exceptions.BaseWalletError)
+async def wallet_storage_exception_handler(
+    request: fastapi.Request, exc: exceptions.BaseWalletError
+) -> responses.JSONResponse:
+    del request
+    return responses.JSONResponse(status_code=exc.code, content={"detail": str(exc)})
 
 
 app.include_router(api_router, prefix=settings.API_V1_STR)

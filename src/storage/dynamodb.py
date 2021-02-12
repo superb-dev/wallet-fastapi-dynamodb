@@ -13,10 +13,10 @@ from storage import exceptions
 
 logger = logging.getLogger(__name__)
 
-__all__ = ("ItemBuilder", "Storage")
+__all__ = ("DynamoDBItemBuilder", "DynamoDB")
 
 
-class ItemBuilder:
+class DynamoDBItemBuilder:
     def __init__(self, table_name: str, pk_field: str) -> None:
         self.table_name = table_name
         self.pk_field = pk_field
@@ -108,20 +108,22 @@ def handle_botocore_exceptions(
     return inner_handle_botocore_exceptions
 
 
-class Storage:
+class DynamoDB:
     """DynamoDB Communication class"""
 
     PK_FIELD = "pk"
 
     @cached_property
-    def client(self) -> aiobotocore.client.AioBaseClient:
+    def _client(self) -> aiobotocore.client.AioBaseClient:
         return self._aws.dynamodb
 
     def __init__(self, aws: AWSManager, table_name: str):
         self._aws: AWSManager = aws
         self.table_name = table_name
 
-        self.item_builder = ItemBuilder(table_name=table_name, pk_field=self.PK_FIELD)
+        self.item_builder = DynamoDBItemBuilder(
+            table_name=table_name, pk_field=self.PK_FIELD
+        )
 
     @handle_botocore_exceptions()
     async def get(
@@ -138,7 +140,7 @@ class Storage:
 
             kwargs["ProjectionExpression"] = fields
 
-        response = await self.client.get_item(**kwargs)
+        response = await self._client.get_item(**kwargs)
 
         if item := response.get("Item"):
             return {
@@ -156,10 +158,10 @@ class Storage:
         data: Dict[str, Any],
     ) -> None:
         item = self.item_builder.put_idempotency_item(pk=pk, data=data)
-        await self.client.put_item(**item["Put"])
+        await self._client.put_item(**item["Put"])
 
     async def table_exists(self) -> bool:
-        existing_tables = (await self.client.list_tables())["TableNames"]
+        existing_tables = (await self._client.list_tables())["TableNames"]
         return self.table_name in existing_tables
 
     @handle_botocore_exceptions()
@@ -172,7 +174,7 @@ class Storage:
         await self._create_table(read_capacity, write_capacity)
 
         logger.info("Waiting for table to be created...")
-        waiter = self.client.get_waiter("table_exists")
+        waiter = self._client.get_waiter("table_exists")
 
         await waiter.wait(TableName=self.table_name)
         logger.info(f"{self.table_name=} created")
@@ -182,11 +184,11 @@ class Storage:
 
     @handle_botocore_exceptions()
     async def drop_table(self) -> None:
-        await self.client.delete_table(TableName=self.table_name)
+        await self._client.delete_table(TableName=self.table_name)
 
         logger.info(f"Request for {self.table_name} deletion sent.")
 
-        waiter = self.client.get_waiter("table_not_exists")
+        waiter = self._client.get_waiter("table_not_exists")
         await waiter.wait(TableName=self.table_name)
 
         logger.info(f"Table {self.table_name} dropped")
@@ -201,11 +203,11 @@ class Storage:
 
     @handle_botocore_exceptions()
     async def transaction_write_items(self, items: List[Dict[str, Any]]) -> None:
-        await self.client.transact_write_items(TransactItems=items)
+        await self._client.transact_write_items(TransactItems=items)
 
     @handle_botocore_exceptions(warn=("ResourceInUseException",))
     async def _create_table(self, read_capacity: int, write_capacity: int) -> None:
-        await self.client.create_table(
+        await self._client.create_table(
             TableName=self.table_name,
             KeySchema=[{"AttributeName": self.PK_FIELD, "KeyType": "HASH"}],
             AttributeDefinitions=[
@@ -224,7 +226,7 @@ class Storage:
 
     @handle_botocore_exceptions()
     async def _update_time_to_live(self, ttl_attribute: str) -> None:
-        await self.client.update_time_to_live(
+        await self._client.update_time_to_live(
             TableName=self.table_name,
             TimeToLiveSpecification={
                 "Enabled": True,
@@ -234,7 +236,7 @@ class Storage:
 
     @handle_botocore_exceptions()
     async def _delete(self, pk: str) -> None:
-        await self.client.delete_item(
+        await self._client.delete_item(
             TableName=self.table_name,
             Key={self.PK_FIELD: self.item_builder.serialize(pk)},
             ConditionExpression="attribute_exists(#key)",

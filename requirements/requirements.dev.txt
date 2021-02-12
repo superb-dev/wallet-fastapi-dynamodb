@@ -3,3 +3,5 @@ pre-commit
 pytest==6.2.2
 pytest-asyncio==0.14.0
 httpx==0.16.1
+asgi-lifespan==1.0.1
+pytest-cov==2.11.1

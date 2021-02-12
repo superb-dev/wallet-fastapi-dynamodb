@@ -1,6 +1,11 @@
+import pytest
+
+pytestmark = pytest.mark.asyncio
+
+
 async def test_ok():
-    pass
+    assert False
 
 
 async def test_create_already_exists():
-    pass
+    assert False

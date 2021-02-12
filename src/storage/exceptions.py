@@ -73,13 +73,11 @@ class TransactionMultipleError(BaseStorageError):
             for error in inner_error.response["CancellationReasons"]:
                 if error["Code"] == "ConditionalCheckFailed":
                     self.errors.append(ConditionalCheckFailedError(error["Message"]))
-                elif error["Code"] == "TransactionConflict":
-                    self.errors.append(ConditionalCheckFailedError(error["Message"]))
                 elif error["Code"] == "None":
                     # keep tracking to help end user to detect which one
                     # of the transaction item is failed
                     self.errors.append(None)
-                else:
+                else:  # pragma: no cover
                     # todo: parse other exception types
                     self.errors.append(UnknownStorageError(error["Message"]))
 

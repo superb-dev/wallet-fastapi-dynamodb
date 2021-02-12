@@ -1,59 +1,64 @@
 import datetime
 import sys
-import uuid
-from unittest.mock import Mock, patch
+from unittest import mock
 
-from storage.models import Transaction, TransactionType
+from storage import models
 
 
 class TestTransaction:
     def test_init(self):
-        pk = str(uuid.uuid4())
+        pk = models.Wallet.generate_wallet_id()
         nonce = hex(sys.maxsize)
-        transaction = Transaction(
-            wallet=pk,
+        transaction = models.Transaction(
+            wallet_id=pk,
             nonce=f"{nonce}",
-            type=TransactionType.DEPOSIT,
+            type=models.TransactionType.DEPOSIT,
             data={"balance": 100},
         )
-        assert transaction.storage_pk == f"{pk}_{nonce}#transaction"
+        assert transaction.unique_id == f"{pk}_{nonce}#transaction"
         assert transaction.nonce == nonce
         assert transaction.data == {"balance": 100}
 
     def test_init_without_nonce(self):
-        pk = str(uuid.uuid4())
-        transaction = Transaction(
-            wallet=pk, nonce=None, type=TransactionType.DEPOSIT, data={"balance": 100}
+        pk = models.Wallet.generate_wallet_id()
+        transaction = models.Transaction(
+            wallet_id=pk,
+            nonce=None,
+            type=models.TransactionType.DEPOSIT,
+            data={"balance": 100},
         )
-        assert transaction.storage_pk == f"{pk}#transaction"
+        assert transaction.unique_id == f"{pk}#transaction"
         assert transaction.nonce is None
         assert transaction.data == {"balance": 100}
 
     def test_ttl(self):
-        pk = str(uuid.uuid4())
-        transaction = Transaction(
-            wallet=pk, nonce=None, type=TransactionType.CREATE, data={}
+        pk = models.Wallet.generate_wallet_id()
+        transaction = models.Transaction(
+            wallet_id=pk, nonce=None, type=models.TransactionType.CREATE, data={}
         )
 
-        datetime_mock = Mock(wraps=datetime.datetime)
+        datetime_mock = mock.Mock(wraps=datetime.datetime)
         datetime_mock.utcnow.return_value = datetime.datetime(2022, 1, 1)
-        with patch("storage.models.datetime.datetime", new=datetime_mock):
+        with mock.patch("storage.models.datetime.datetime", new=datetime_mock):
             assert transaction.ttl == 1640986200
 
         # cached and not change each time
         assert transaction.ttl == 1640986200
 
     def test_as_dict(self):
-        pk = str(uuid.uuid4())
+        pk = models.Wallet.generate_wallet_id()
         nonce = "abc"
-        transaction = Transaction(
-            wallet=pk, nonce=nonce, type=TransactionType.TRANSFER, data={"balance": 100}
+        transaction = models.Transaction(
+            wallet_id=pk,
+            nonce=nonce,
+            type=models.TransactionType.TRANSFER,
+            data={"balance": 100},
         )
 
-        datetime_mock = Mock(wraps=datetime.datetime)
+        datetime_mock = mock.Mock(wraps=datetime.datetime)
         datetime_mock.utcnow.return_value = datetime.datetime(2022, 1, 1)
 
-        with patch("storage.models.datetime.datetime", new=datetime_mock):
+        with mock.patch("storage.models.datetime.datetime", new=datetime_mock):
             assert transaction.as_dict() == {
                 "data": {"balance": 100},
                 "ttl": 1640986200,
@@ -61,15 +66,18 @@ class TestTransaction:
             }
 
     def test_as_dict_without_nonce(self):
-        pk = str(uuid.uuid4())
-        transaction = Transaction(
-            wallet=pk, nonce=None, type=TransactionType.TRANSFER, data={"balance": 100}
+        pk = models.Wallet.generate_wallet_id()
+        transaction = models.Transaction(
+            wallet_id=pk,
+            nonce=None,
+            type=models.TransactionType.TRANSFER,
+            data={"balance": 100},
         )
 
-        datetime_mock = Mock(wraps=datetime.datetime)
+        datetime_mock = mock.Mock(wraps=datetime.datetime)
         datetime_mock.utcnow.return_value = datetime.datetime(2022, 1, 1)
 
-        with patch("storage.models.datetime.datetime", new=datetime_mock):
+        with mock.patch("storage.models.datetime.datetime", new=datetime_mock):
             assert transaction.as_dict() == {
                 "data": {"balance": 100},
                 "ttl": 1640986200,

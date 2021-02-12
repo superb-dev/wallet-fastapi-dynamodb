@@ -1,14 +1,14 @@
 import asyncio
 import uuid
 
+import asgi_lifespan
 import pytest
 from httpx import AsyncClient
 
 from api.application import app
 from core.aws import AWSManager
 from core.config import settings
-from storage.models import Wallet
-from storage.storage import Storage
+from storage import DynamoDB, Wallet
 
 
 @pytest.fixture()
@@ -46,8 +46,8 @@ def init_settings():
 
 
 @pytest.fixture(scope="session")
-async def storage(aws) -> Storage:
-    storage = Storage(aws=aws, table_name=settings.WALLET_TABLE_NAME)
+async def storage(aws) -> DynamoDB:
+    storage = DynamoDB(aws=aws, table_name=settings.WALLET_TABLE_NAME)
     await storage.create_table()
     try:
         yield storage
@@ -62,9 +62,12 @@ async def aws() -> AWSManager:
 
 
 @pytest.fixture(scope="module")
-async def client() -> AsyncClient:
-    async with AsyncClient(app=app, base_url="http://test") as c:
-        yield c
+async def client(storage) -> AsyncClient:
+    # https://fastapi.tiangolo.com/advanced/testing-events/
+    # https://github.com/encode/starlette/issues/104
+    async with asgi_lifespan.LifespanManager(app):  # trigger events
+        async with AsyncClient(app=app, base_url="http://test") as c:
+            yield c
 
 
 @pytest.fixture(scope="session")

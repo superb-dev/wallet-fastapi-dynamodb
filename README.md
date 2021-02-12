@@ -126,6 +126,7 @@ Now let`s estimate the number of the DynamoDB partitions,
 the default partition size is 10 GB at the DynamoDB and the minimal item size is 1kb
 
 :warning: It is planned to move stale data of transaction log from the hot storage (DynamoDB) to the cold (Data lake) after 8 hours.
+
 :warning: check that DynamoDB minimal item size is 1kb???
 
 ```
@@ -342,8 +343,11 @@ Or you could prevent a `UpdateItem` operation from modifying an item if one of i
 Applying the above, we can update the balance only if it has sufficient funds or create only are single wallet for user.
 
 :point_right: Wrap all write operations such as **deposit/transfer/create** to the DynamoDB transaction
+
 :point_right: Use conditional writes to check **wallet id uniqueness**
+
 :point_right: Use conditional writes to check **that user has enough funds**
+
 :point_right: Use conditional writes to check **transaction id uniqueness**
 
 ```bash
@@ -400,7 +404,9 @@ regardless of its current value.
 If a `UpdateItem` operation fails, the application could not retry 
 the operation, to prevent double deposit.
 We can solve this by adding nonce (nonce check guarantee idempotency).
+
 :point_right: Use **nonce** to guarantee idempotency.
+
 :point_right: Use a atomic counter for the deposit operation
 
 

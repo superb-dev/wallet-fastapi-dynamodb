@@ -3,8 +3,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from storage import exceptions
-from storage.storage import Storage
+from storage import DynamoDB, exceptions
 
 pytestmark = pytest.mark.asyncio
 
@@ -54,24 +53,29 @@ class TestStorage:
             await storage.get("arb_key")
 
     async def test_get_table_do_not_exists(self, aws):
-        storage = Storage(aws=aws, table_name="test_get_table_do_not_exists")
+        storage = DynamoDB(aws=aws, table_name="test_get_table_do_not_exists")
         with pytest.raises(exceptions.ObjectNotFoundError, match="non-existent table"):
             await storage.get("arb_key")
 
     async def test_create_table_ok(self, aws):
-        storage = Storage(aws=aws, table_name="test_create_table_ok")
+        storage = DynamoDB(aws=aws, table_name="test_create_table_ok")
         await storage.create_table()
+
+        assert await storage.table_exists()
+
         await storage.drop_table()
+
+        assert await storage.table_exists() is False
 
     async def test_create_table_already_exists(self, storage):
         """Second call of the create_table should raise an error"""
         await storage.create_table()
 
     async def test_create_table_with_ttl_ok(self, aws):
-        storage = Storage(aws=aws, table_name="test_create_table_with_ttl_ok")
+        storage = DynamoDB(aws=aws, table_name="test_create_table_with_ttl_ok")
 
         with patch.object(
-            storage.client, "update_time_to_live", AsyncMock()
+            storage._client, "update_time_to_live", AsyncMock()
         ) as update_time_to_live:
             await storage.create_table(ttl_attribute="ttl")
 
@@ -82,12 +86,12 @@ class TestStorage:
         )
 
     async def test_delete_table(self, aws):
-        storage = Storage(aws=aws, table_name="test_delete_table")
+        storage = DynamoDB(aws=aws, table_name="test_delete_table")
         await storage.create_table()
         await storage.drop_table()
 
     async def test_delete_table_does_not_exists(self, aws):
-        storage = Storage(aws=aws, table_name="test_delete_table_does_not_exists")
+        storage = DynamoDB(aws=aws, table_name="test_delete_table_does_not_exists")
         with pytest.raises(exceptions.ObjectNotFoundError, match="non-existent table"):
             await storage.drop_table()
 
@@ -98,16 +102,16 @@ class TestStorage:
             await storage.delete(pk)
 
     async def test_transaction_write_items(self, storage):
-        pass
+        assert False
 
     async def test_transaction_write_items_conflict(self, storage):
-        pass
+        assert False
 
     async def test_transaction_write_items_conditions_check_failed(self, storage):
-        pass
+        assert False
 
     async def test_transaction_write_items_over_provisioned(self, storage):
-        pass
+        assert False
 
     async def test_transaction_write_items_throttling(self, storage):
-        pass
+        assert False

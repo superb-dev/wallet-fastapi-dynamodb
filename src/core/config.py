@@ -15,6 +15,7 @@ class Settings(pydantic.BaseSettings):
     API_V1_STR: str = "/api/v1"
 
     PROJECT_NAME: str = "wallet"
+    PROJECT_VERSION: str = "1.0.0"
 
     HOST: str = "127.0.0.1"
     # Main API communication endpoint

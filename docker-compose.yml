@@ -12,6 +12,8 @@ services:
     container_name: wallet_maintenance
     image: wallet
     env_file: .env
+    depends_on:
+      - dynamodb
     build:
       context: ${PWD}
       dockerfile: ${PWD}/ci/wallet_api.dockerfile
@@ -25,12 +27,12 @@ services:
       interval: 20s
       timeout: 2s
       retries: 10
-
-
   app:
     container_name: wallet_app
     image: wallet
     env_file: .env
+    depends_on:
+      - maintenance
     ports:
       - "9001:9001"
     build:

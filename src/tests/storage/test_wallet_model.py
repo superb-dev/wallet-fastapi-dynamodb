@@ -17,18 +17,27 @@ pytestmark = pytest.mark.asyncio
 class TestWallet:
     async def test_init(self, raw_wallet):
         with pytest.raises(exceptions.WalletDoesNotExistsError):
-            assert raw_wallet.pk
+            assert raw_wallet.wallet_id
 
         assert raw_wallet.storage.table_name == settings.WALLET_TABLE_NAME
+
+    async def test_storage_not_available_on_empty(self):
+        empty_wallet = Wallet()
+
+        with pytest.raises(ValueError):
+            assert empty_wallet.storage
 
     async def test_eq(self, wallet):
         assert wallet != 1
         assert wallet is not True
         assert not wallet == {}
 
-        second_wallet = Wallet(pk=wallet.pk)
+        second_wallet = Wallet(wallet_id=wallet.wallet_id)
 
         assert second_wallet == wallet
+
+    async def test_repr(self, wallet):
+        assert repr(wallet) == f"Wallet(pk={wallet.wallet_id})"
 
     async def test_eq_empty_pk(self, wallet):
         assert wallet != Wallet()
@@ -38,14 +47,32 @@ class TestWallet:
         user_id = str(uuid.uuid4())
         await wallet.create_wallet(user_id=user_id)
 
-        transaction_pk = Transaction.get_storage_pk(nonce=None, wallet=wallet.pk)
+        transaction_pk = Transaction.get_unique_id(nonce=None, wallet=wallet.wallet_id)
 
         transaction_response = await wallet.storage.get(transaction_pk)
         assert transaction_response["data"] == {"amount": wallet.DEFAULT_BALANCE}
         assert transaction_response["type"] == TransactionType.CREATE.value
 
-        assert wallet.pk is not None
-        assert wallet.pk != user_id
+        assert wallet.wallet_id is not None
+        assert wallet.wallet_id != user_id
+
+    async def test_create_with_same_id_twice(self, raw_wallet):
+        """If we have an issue with wallet id generator and it is generate the same id
+        for different wallets.
+
+        The collisions of the guid are possible only theoretically.
+        https://stackoverflow.com/a/184897/1027110
+        """
+        user_id = str(uuid.uuid4())
+        await raw_wallet.create_wallet(user_id=user_id)
+
+        with pytest.raises(exceptions.WalletTransactionAlreadyRegisteredError):
+            with mock.patch.object(
+                raw_wallet,
+                "generate_wallet_id",
+                mock.Mock(return_value=raw_wallet.wallet_id),
+            ):
+                await raw_wallet.create_wallet(user_id=user_id)
 
     async def test_already_exists_for_same_user(self, raw_wallet):
         user_id = str(uuid.uuid4())
@@ -67,12 +94,17 @@ class TestWallet:
 
         assert await wallet.get_balance() == 500
 
-        transaction_pk = Transaction.get_storage_pk(nonce=nonce, wallet=wallet.pk)
+        transaction_pk = Transaction.get_unique_id(nonce=nonce, wallet=wallet.wallet_id)
 
         transaction_response = await wallet.storage.get(transaction_pk)
         assert transaction_response["data"] == {"amount": 500}
 
         assert transaction_response["type"] == TransactionType.DEPOSIT.value
+
+    async def test_deposit_negative(self, wallet):
+        nonce = "test_deposit_negative"
+        with pytest.raises(ValueError):
+            await wallet.atomic_deposit(-500, nonce=nonce)
 
     async def test_atomic_deposit_idempotency(self, wallet):
         nonce = "test_deposit"
@@ -102,14 +134,12 @@ class TestWallet:
     async def test_get_balance_deposit_in_progress(self, wallet):
         nonce = "test_get_balance_deposit_in_progress"
 
-        await asyncio.wait(
-            [
-                wallet.get_balance(),
-                wallet.get_balance(),
-                wallet.atomic_deposit(500, nonce),
-                wallet.get_balance(),
-                wallet.get_balance(),
-            ]
+        await asyncio.gather(
+            wallet.get_balance(),
+            wallet.get_balance(),
+            wallet.atomic_deposit(500, nonce),
+            wallet.get_balance(),
+            wallet.get_balance(),
         )
 
         # todo: can be false due to eventual consistency
@@ -117,7 +147,7 @@ class TestWallet:
         assert await wallet.get_balance() == 500
 
     async def test_get_balance_not_existing_wallet(self, raw_wallet):
-        raw_wallet._pk = "test_get_balance_not_existing_wallet"
+        raw_wallet._wallet_id = "test_get_balance_not_existing_wallet"
         with pytest.raises(exceptions.WalletDoesNotExistsError):
             await raw_wallet.get_balance()
 
@@ -135,14 +165,14 @@ class TestWallet:
             400, target_wallet=second_wallet, nonce=nonce_transfer
         )
 
-        transaction_pk = Transaction.get_storage_pk(
-            nonce=nonce_transfer, wallet=wallet.pk
+        transaction_pk = Transaction.get_unique_id(
+            nonce=nonce_transfer, wallet=wallet.wallet_id
         )
 
         transaction_response = await wallet.storage.get(transaction_pk)
         assert transaction_response["data"] == {
             "amount": 400,
-            "target_wallet": second_wallet.pk,
+            "target_wallet": second_wallet.wallet_id,
         }
 
         assert transaction_response["type"] == TransactionType.TRANSFER.value
@@ -192,7 +222,7 @@ class TestWallet:
 
         nonce_transfer = "test_atomic_transfer_to_not_existing_target_wallet_transfer"
 
-        raw_wallet = Wallet(pk="invalid_wallet")
+        raw_wallet = Wallet(wallet_id="invalid_wallet")
 
         with pytest.raises(exceptions.WalletDoesNotExistsError):
             await wallet.atomic_transfer(
@@ -207,7 +237,7 @@ class TestWallet:
 
         nonce_transfer = "test_atomic_transfer_from_invalid_wallet_transfer"
 
-        raw_wallet = Wallet(pk="invalid_wallet", aws=aws)
+        raw_wallet = Wallet(wallet_id="invalid_wallet", aws=aws)
 
         with pytest.raises(exceptions.WalletDoesNotExistsError):
             await raw_wallet.atomic_transfer(
@@ -271,14 +301,14 @@ class TestWallet:
             )
         ]
 
-        original = wallet.storage.client.transact_write_items
+        original = wallet.storage._client.transact_write_items
 
         call_count = 0
 
         # todo: integration test is needed
         # mock due to TransactionConflictExceptions are not thrown by
         # downloadable DynamoDB for transactional APIs.
-        exc = wallet.storage.client.exceptions.TransactionConflictException(
+        exc = wallet.storage._client.exceptions.TransactionConflictException(
             error_response={
                 "Error": {
                     "Code": "TransactionConflictException",
@@ -296,7 +326,7 @@ class TestWallet:
             return await original(*args, **kwargs)
 
         with patch.object(
-            wallet.storage.client,
+            wallet.storage._client,
             "transact_write_items",
             mock.AsyncMock(side_effect=mocked),
         ):

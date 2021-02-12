@@ -90,7 +90,14 @@ $ pytest .
 
 If you use GitLab CI the tests will run automatically.
 
+#### Build with dev packages
+
+```Bash
+PIP_PACKAGES_FILE=requirements.dev.txt docker-compose build
+```
+
 #### Local tests
+
 You can rerun the test on live code:
 
 ```Bash

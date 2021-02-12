@@ -7,13 +7,9 @@ services:
       - "8001:8000"
     healthcheck:
       test: ["CMD-SHELL", "curl http://127.0.0.1:8000"]
-
   maintenance:
     container_name: wallet_maintenance
     image: wallet
-    env_file: .env
-    depends_on:
-      - dynamodb
     build:
       context: ${PWD}
       dockerfile: ${PWD}/ci/wallet_api.dockerfile
@@ -21,18 +17,16 @@ services:
         PIP_PACKAGES_FILE: ${PIP_PACKAGES_FILE}
     environment: &wallet_env
       - WALLET_AWS_DYNAMODB_ENDPOINT_URL=http://dynamodb:8000
-    command: sh -c "maintenance.sh"
+    command: sh -c "dockerize -wait tcp://dynamodb:8000 maintenance.sh"
     healthcheck:
       test: ["CMD-SHELL", "test -e .done"]
       interval: 20s
       timeout: 2s
       retries: 10
+      start_period: 3s
   app:
     container_name: wallet_app
     image: wallet
-    env_file: .env
-    depends_on:
-      - maintenance
     ports:
       - "9001:9001"
     build:
@@ -46,4 +40,4 @@ services:
       interval: 2s
       timeout: 2s
       retries: 10
-    command: gunicorn -k uvicorn.workers.UvicornWorker -c /home/httpd/conf/gunicorn/gunicorn.conf.py api.application:app
+    command: sh -c "dockerize -wait tcp://dynamodb:8000 gunicorn -k uvicorn.workers.UvicornWorker -c /home/httpd/conf/gunicorn/gunicorn.conf.py api.application:app"

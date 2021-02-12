@@ -3,7 +3,7 @@ import logging
 
 from core.aws import AWSManager
 from core.config import settings
-from storage.storage import Storage
+from storage import DynamoDB
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +13,7 @@ async def main() -> None:
     async with AWSManager() as aws:
         table_name = settings.WALLET_TABLE_NAME
 
-        storage = Storage(aws=aws, table_name=table_name)
+        storage = DynamoDB(aws=aws, table_name=table_name)
 
         if await storage.table_exists():
             logger.info(f"{table_name=} already exists")

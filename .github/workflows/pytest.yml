@@ -1,11 +1,11 @@
 name: Docker Image CI
 
-on: [push]
-
+on:
+  push:
+    paths:
+      - '**/*.py'
 jobs:
-
   build:
-
     runs-on: ubuntu-latest
     env:
       PIP_PACKAGES_FILE: requirements.dev.txt
@@ -19,7 +19,7 @@ jobs:
       run: docker ps -a
 
     - name: Check logs
-      run: docker logs backend
+      run: docker logs wallet_app
 
     - name: Run test suite
       run: docker exec wallet_maintenance pytest

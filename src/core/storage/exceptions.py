@@ -4,6 +4,8 @@ import botocore.exceptions
 
 
 class BaseStorageError(Exception):
+    """Base class for all storage exceptions."""
+
     code = 500
 
     botocore_code: Set[str] = set()
@@ -80,23 +82,3 @@ class TransactionMultipleError(BaseStorageError):
                 else:  # pragma: no cover
                     # todo: parse other exception types
                     self.errors.append(UnknownStorageError(error["Message"]))
-
-
-class BaseWalletError(Exception):
-    code = 500
-
-
-class WalletAlreadyExistsError(BaseWalletError):
-    code = 409
-
-
-class WalletDoesNotExistsError(BaseWalletError):
-    code = 404
-
-
-class WalletTransactionAlreadyRegisteredError(BaseWalletError):
-    code = 409
-
-
-class WalletInsufficientFundsError(BaseWalletError):
-    code = 409

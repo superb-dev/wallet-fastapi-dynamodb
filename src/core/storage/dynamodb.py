@@ -9,7 +9,7 @@ import botocore.exceptions
 
 from core.aws import AWSManager
 from core.config import settings
-from storage import exceptions
+from core.storage import exceptions
 
 logger = logging.getLogger(__name__)
 

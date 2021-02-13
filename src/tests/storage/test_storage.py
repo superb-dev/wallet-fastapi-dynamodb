@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from storage import DynamoDB, exceptions
+from core.storage import DynamoDB, exceptions
 
 pytestmark = pytest.mark.asyncio
 

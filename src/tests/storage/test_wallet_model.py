@@ -7,16 +7,17 @@ from unittest.mock import patch
 
 import pytest
 
+import core.storage
 from core.config import settings
-from storage import exceptions
-from storage.models import Transaction, TransactionType, Wallet
+from crud import exceptions
+from crud.wallet import Transaction, TransactionType, Wallet
 
 pytestmark = pytest.mark.asyncio
 
 
 class TestWallet:
     async def test_init(self, raw_wallet):
-        with pytest.raises(exceptions.WalletDoesNotExistsError):
+        with pytest.raises(exceptions.WalletNotFoundError):
             assert raw_wallet.wallet_id
 
         assert raw_wallet.storage.table_name == settings.WALLET_TABLE_NAME
@@ -126,7 +127,7 @@ class TestWallet:
         with patch.object(
             raw_wallet.storage, "transaction_write_items", mock.AsyncMock()
         ) as transaction_write_items:
-            with pytest.raises(exceptions.WalletDoesNotExistsError):
+            with pytest.raises(exceptions.WalletNotFoundError):
                 await raw_wallet.atomic_deposit(500, nonce=nonce)
 
         transaction_write_items.assert_not_awaited()
@@ -148,7 +149,7 @@ class TestWallet:
 
     async def test_get_balance_not_existing_wallet(self, raw_wallet):
         raw_wallet._wallet_id = "test_get_balance_not_existing_wallet"
-        with pytest.raises(exceptions.WalletDoesNotExistsError):
+        with pytest.raises(exceptions.WalletNotFoundError):
             await raw_wallet.get_balance()
 
     async def test_atomic_transfer(self, wallet_factory):
@@ -208,7 +209,7 @@ class TestWallet:
         with patch.object(
             wallet.storage, "transaction_write_items", mock.AsyncMock()
         ) as transaction_write_items:
-            with pytest.raises(exceptions.WalletDoesNotExistsError):
+            with pytest.raises(exceptions.WalletNotFoundError):
                 await wallet.atomic_transfer(
                     400, target_wallet=raw_wallet, nonce=nonce_transfer
                 )
@@ -224,7 +225,7 @@ class TestWallet:
 
         raw_wallet = Wallet(wallet_id="invalid_wallet")
 
-        with pytest.raises(exceptions.WalletDoesNotExistsError):
+        with pytest.raises(exceptions.WalletNotFoundError):
             await wallet.atomic_transfer(
                 400, target_wallet=raw_wallet, nonce=nonce_transfer
             )
@@ -239,7 +240,7 @@ class TestWallet:
 
         raw_wallet = Wallet(wallet_id="invalid_wallet", aws=aws)
 
-        with pytest.raises(exceptions.WalletDoesNotExistsError):
+        with pytest.raises(exceptions.WalletNotFoundError):
             await raw_wallet.atomic_transfer(
                 400, target_wallet=wallet, nonce=nonce_transfer
             )
@@ -333,7 +334,7 @@ class TestWallet:
             result = await asyncio.gather(*coroutines, return_exceptions=True)
 
         assert result[:-1] == [None] * (concurrency - 1)
-        assert isinstance(result[-1], exceptions.TransactionConflictError)
+        assert isinstance(result[-1], core.storage.exceptions.TransactionConflictError)
 
         assert await wallet.get_balance() == 1
 

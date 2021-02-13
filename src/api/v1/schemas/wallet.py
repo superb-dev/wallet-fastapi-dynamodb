@@ -6,9 +6,15 @@ import pydantic
 class Wallet(pydantic.BaseModel):
     """Response information about wallet state."""
 
-    id: pydantic.StrictStr = pydantic.Field(description="Wallet unique identifier")
+    id: pydantic.StrictStr = pydantic.Field(
+        description="public unique identifier of payment address"
+    )
     balance: str = pydantic.Field(
-        ..., min_length=1, regex=r"\d+", strict=True, description="Actual balance"
+        ...,
+        min_length=1,
+        regex=r"\d+",
+        strict=True,
+        description="Actual wallet balance",
     )
 
 

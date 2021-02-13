@@ -5,7 +5,7 @@ import pytest
 from httpx import AsyncClient
 
 from core.config import settings
-from storage.models import Wallet
+from crud import Wallet
 
 pytestmark = pytest.mark.asyncio
 

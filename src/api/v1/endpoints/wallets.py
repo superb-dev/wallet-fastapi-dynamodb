@@ -3,7 +3,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
-import storage
+import crud.wallet
 from api import dependencies
 from api.v1 import schemas
 
@@ -13,7 +13,7 @@ router = APIRouter()
 @router.post("/", response_model=schemas.wallet.Wallet)
 async def create_wallet(
     *,
-    wallet: storage.Wallet = Depends(dependencies.get_wallet),
+    wallet: crud.wallet.Wallet = Depends(dependencies.get_wallet_storage),
     wallet_in: schemas.wallet.WalletCreate,
 ) -> Any:
     """Create a new wallet for a User Account.
@@ -40,7 +40,7 @@ def get_user_wallet() -> Any:  # pragma: no cover
 
 @router.get("/{wallet_id}/balance", response_model=schemas.wallet.Wallet)
 async def get_wallet_balance_by_id(
-    wallet: storage.Wallet = Depends(dependencies.get_wallet),
+    wallet: crud.wallet.Wallet = Depends(dependencies.get_wallet_storage),
 ) -> Any:
     """Retrieve a specified wallet balance by wallet id.
 
@@ -53,7 +53,7 @@ async def get_wallet_balance_by_id(
 @router.put("/{wallet_id}/deposit", status_code=204)
 async def wallet_deposit(
     *,
-    wallet: storage.Wallet = Depends(dependencies.get_wallet),
+    wallet: crud.wallet.Wallet = Depends(dependencies.get_wallet_storage),
     wallet_in: schemas.wallet.WalletDeposit,
 ) -> Any:
     """Add money to your Wallet API balance.
@@ -78,7 +78,7 @@ async def wallet_deposit(
 async def wallet_transfer(
     *,
     target_wallet_id: uuid.UUID,
-    wallet: storage.Wallet = Depends(dependencies.get_wallet),
+    wallet: crud.wallet.Wallet = Depends(dependencies.get_wallet_storage),
     wallet_in: schemas.wallet.WalletTransfer,
 ) -> Any:
     """Initiate a transfer money from one wallet to another inside the system.
@@ -95,7 +95,7 @@ async def wallet_transfer(
     to ensure that only a single transfer is created.
     """
 
-    target_wallet = storage.Wallet(wallet_id=target_wallet_id)
+    target_wallet = crud.wallet.Wallet(wallet_id=target_wallet_id)
 
     await wallet.atomic_transfer(
         nonce=wallet_in.nonce, amount=wallet_in.amount_int, target_wallet=target_wallet

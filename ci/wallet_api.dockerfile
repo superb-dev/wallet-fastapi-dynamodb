@@ -4,6 +4,7 @@ FROM python:3.9-alpine3.12
 LABEL maintainer="Sergey Kovalev <44sergey@gmail.com>"
 ENV DOCKERIZE_VERSION v0.6.1
 
+# todo: move to base image
 RUN apk add --no-cache --virtual .build-deps gcc libc-dev make openssl \
     && pip install --no-cache-dir "uvicorn[standard]" gunicorn aiobotocore \
     && wget https://github.com/jwilder/dockerize/releases/download/$DOCKERIZE_VERSION/dockerize-alpine-linux-amd64-$DOCKERIZE_VERSION.tar.gz \
@@ -21,8 +22,9 @@ COPY ./ci/gunicorn.conf.py /home/httpd/conf/gunicorn/
 COPY ./ci/maintenance.sh /bin/maintenance.sh
 RUN chmod +x /bin/maintenance.sh
 
-COPY src/ /home/httpd/app/src/
 
+COPY src/ /home/httpd/app/src/
+COPY .coveragerc /home/httpd/app/
 
 WORKDIR /home/httpd/app/src/
 ENV PYTHONPATH=/home/httpd/app/src/

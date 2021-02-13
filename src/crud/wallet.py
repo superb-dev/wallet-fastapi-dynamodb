@@ -5,10 +5,9 @@ import functools
 import uuid
 from typing import Any, Dict, Optional, Union
 
-import core.aws
-import storage
+import crud.exceptions
+from core import storage
 from core.config import settings
-from storage import exceptions
 
 
 class TransactionType(enum.Enum):
@@ -61,6 +60,7 @@ class Transaction:
             return f"{wallet}{cls.TRANSACTION_KEY_POSTFIX}"
 
     def as_dict(self) -> Dict[str, Any]:
+        """Converts transaction model to the JSON representation."""
         return {"ttl": self.ttl, "type": self.type.value, "data": self.data}
 
 
@@ -80,35 +80,31 @@ class Wallet:
 
     def __init__(
         self,
-        aws: Optional[core.aws.AWSManager] = None,
-        table_name: Optional[str] = None,
+        storage: Optional[storage.DynamoDB] = None,
         wallet_id: Optional[Union[uuid.UUID, str]] = None,
     ):
-        if table_name is None:
-            table_name = settings.WALLET_TABLE_NAME
-
-        self._table_name: str = table_name
-        self._aws = aws
+        self._storage = storage
 
         if isinstance(wallet_id, uuid.UUID):
             wallet_id = str(wallet_id)
+
         self._wallet_id: Optional[str] = wallet_id
+
+    @property
+    def storage(self) -> storage.DynamoDB:
+        """Inner CRUD storage"""
+        if not self._storage:
+            raise ValueError("Storage was not set")
+
+        return self._storage
 
     @property
     def wallet_id(self) -> str:
         """Unique wallet identifier"""
         if not self._wallet_id:
-            raise exceptions.WalletDoesNotExistsError("Create wallet first")
+            raise crud.exceptions.WalletNotFoundError("Create wallet first")
 
         return self._wallet_id
-
-    @functools.cached_property
-    def storage(self) -> storage.DynamoDB:
-        """Inner CRUD storage"""
-        if not self._aws:
-            raise ValueError("AWS manager was not set")
-
-        return storage.DynamoDB(aws=self._aws, table_name=self._table_name)
 
     @property
     def unique_id(self) -> str:
@@ -156,13 +152,13 @@ class Wallet:
                     ),
                 ]
             )
-        except exceptions.TransactionMultipleError as e:
+        except storage.exceptions.TransactionMultipleError as e:
             if e.errors[0]:
-                raise exceptions.WalletTransactionAlreadyRegisteredError(
+                raise crud.exceptions.WalletTransactionAlreadyRegisteredError(
                     str(e.errors[0])
                 )
 
-            raise exceptions.WalletAlreadyExistsError(
+            raise crud.exceptions.WalletAlreadyExistsError(
                 f"Wallet already exists for the user {user_pk}"
             )
 
@@ -171,8 +167,8 @@ class Wallet:
         # todo: support both strong and eventual consistency
         try:
             response = await self.storage.get(pk=self.unique_id, fields="balance")
-        except exceptions.ObjectNotFoundError:
-            raise exceptions.WalletDoesNotExistsError(
+        except storage.exceptions.ObjectNotFoundError:
+            raise crud.exceptions.WalletNotFoundError(
                 f"Wallet with {self.wallet_id=} does not exists"
             )
 
@@ -216,24 +212,24 @@ class Wallet:
                     ),
                 ]
             )
-        except exceptions.TransactionMultipleError as e:
+        except storage.exceptions.TransactionMultipleError as e:
             if e.errors[0]:
-                raise exceptions.WalletTransactionAlreadyRegisteredError(
+                raise crud.exceptions.WalletTransactionAlreadyRegisteredError(
                     f"Transaction with nonce {nonce} already registered."
                 )
 
             if e.errors[1]:
-                raise exceptions.WalletInsufficientFundsError(
+                raise crud.exceptions.WalletInsufficientFundsError(
                     "Wallet has insufficient funds to "
                     f"complete operation: {str(e.errors[1])}"
                 )
 
             if e.errors[2]:
-                raise exceptions.WalletDoesNotExistsError(
+                raise crud.exceptions.WalletNotFoundError(
                     f"Wallet does not exists: {str(e.errors[2])}"
                 )
 
-            raise exceptions.BaseWalletError(str(e))
+            raise crud.exceptions.BaseWalletError(str(e))
 
     async def atomic_deposit(self, amount: int, nonce: str) -> None:
         """Deposit specified amount to the wallet,
@@ -260,13 +256,13 @@ class Wallet:
                     ),
                 ]
             )
-        except exceptions.TransactionMultipleError as e:
+        except storage.exceptions.TransactionMultipleError as e:
             if e.errors[0]:
-                raise exceptions.WalletTransactionAlreadyRegisteredError(
+                raise crud.exceptions.WalletTransactionAlreadyRegisteredError(
                     f"Transaction with nonce {nonce} already registered."
                 )
 
-            raise exceptions.WalletDoesNotExistsError(
+            raise crud.exceptions.WalletNotFoundError(
                 f"Wallet with {self.wallet_id=} does not exists"
             )
 

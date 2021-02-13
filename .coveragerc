@@ -1,7 +1,5 @@
 [run]
-source =
-    ./src/
-omit = ./src/tests/*
+omit = *tests*
 
 [report]
 exclude_lines =

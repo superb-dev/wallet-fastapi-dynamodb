@@ -5,15 +5,16 @@ import asgi_lifespan
 import pytest
 from httpx import AsyncClient
 
+import core.storage
+import crud
 from api.application import app
 from core.aws import AWSManager
 from core.config import settings
-from storage import DynamoDB, Wallet
 
 
 @pytest.fixture()
-async def raw_wallet(aws, storage) -> Wallet:
-    yield Wallet(aws=aws)
+async def raw_wallet(aws, storage) -> crud.Wallet:
+    yield crud.Wallet(storage=storage)
 
 
 @pytest.fixture()
@@ -21,7 +22,7 @@ async def wallet_factory(aws, storage):
     created = []
 
     async def create_wallet():
-        raw_wallet = Wallet(aws=aws)
+        raw_wallet = crud.Wallet(storage=storage)
         user_id = str(uuid.uuid4())
         await raw_wallet.create_wallet(user_id=user_id)
         return raw_wallet
@@ -33,7 +34,7 @@ async def wallet_factory(aws, storage):
 
 
 @pytest.fixture()
-async def wallet(wallet_factory) -> Wallet:
+async def wallet(wallet_factory) -> crud.Wallet:
     yield await wallet_factory()
 
 
@@ -46,8 +47,8 @@ def init_settings():
 
 
 @pytest.fixture(scope="session")
-async def storage(aws) -> DynamoDB:
-    storage = DynamoDB(aws=aws, table_name=settings.WALLET_TABLE_NAME)
+async def storage(aws) -> core.storage.DynamoDB:
+    storage = core.storage.DynamoDB(aws=aws, table_name=settings.WALLET_TABLE_NAME)
     await storage.create_table()
     try:
         yield storage

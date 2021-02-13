@@ -22,7 +22,7 @@ jobs:
       run: docker logs wallet_app
 
     - name: Run test suite
-      run: docker exec wallet_maintenance pytest --cov=./ --cov-report=xml
+      run: docker exec wallet_maintenance pytest --cov=./ --cov-report=xml --cov-config=../.coveragerc
 
     - name: Copy tests coverage
       run: docker cp wallet_maintenance:/home/httpd/app/src/coverage.xml coverage.xml

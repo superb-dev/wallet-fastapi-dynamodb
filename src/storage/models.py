@@ -142,16 +142,16 @@ class Wallet:
             await self.storage.transaction_write_items(
                 items=[
                     # create transaction record
-                    self.storage.item_builder.put_idempotency_item(
+                    self.storage.item_factory.put_idempotency_item(
                         pk=transaction.unique_id, data=transaction.as_dict()
                     ),
                     # create wallet
-                    self.storage.item_builder.put_idempotency_item(
+                    self.storage.item_factory.put_idempotency_item(
                         pk=self.unique_id,
                         data={self.BALANCE_KEY: self.DEFAULT_BALANCE},
                     ),
                     # create link between wallet and user
-                    self.storage.item_builder.put_idempotency_item(
+                    self.storage.item_factory.put_idempotency_item(
                         pk=user_pk, data={self.USER_WALLET_KEY: self.wallet_id}
                     ),
                 ]
@@ -203,13 +203,13 @@ class Wallet:
         try:
             await self.storage.transaction_write_items(
                 items=[
-                    self.storage.item_builder.put_idempotency_item(
+                    self.storage.item_factory.put_idempotency_item(
                         pk=transaction.unique_id, data=transaction.as_dict()
                     ),
-                    self.storage.item_builder.update_atomic_decrement(
+                    self.storage.item_factory.update_atomic_decrement(
                         pk=self.unique_id, update_key=self.BALANCE_KEY, amount=amount
                     ),
-                    self.storage.item_builder.update_atomic_increment(
+                    self.storage.item_factory.update_atomic_increment(
                         pk=target_wallet.unique_id,
                         update_key=self.BALANCE_KEY,
                         amount=amount,
@@ -249,11 +249,11 @@ class Wallet:
         try:
             await self.storage.transaction_write_items(
                 items=[
-                    self.storage.item_builder.put_idempotency_item(
+                    self.storage.item_factory.put_idempotency_item(
                         pk=transaction.unique_id,
                         data=transaction.as_dict(),
                     ),
-                    self.storage.item_builder.update_atomic_increment(
+                    self.storage.item_factory.update_atomic_increment(
                         pk=self.unique_id,
                         update_key=self.BALANCE_KEY,
                         amount=amount,

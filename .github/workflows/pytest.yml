@@ -22,4 +22,13 @@ jobs:
       run: docker logs wallet_app
 
     - name: Run test suite
-      run: docker exec wallet_maintenance pytest
+      run: docker exec wallet_maintenance pytest --cov=./ --cov-report=xml
+
+    - name: Copy tests coverage
+      run: docker cp wallet_maintenance:/home/httpd/app/src/coverage.xml coverage.xml
+
+    - name: "Upload coverage to Codecov"
+      uses: codecov/codecov-action@v1
+      with:
+        files: ./coverage.xml
+        fail_ci_if_error: true

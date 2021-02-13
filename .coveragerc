@@ -1,0 +1,9 @@
+[run]
+source =
+    ./src/
+omit = ./src/tests/*
+
+[report]
+exclude_lines =
+    pragma: no cover
+    raise NotImplementedError

@@ -1,7 +1,7 @@
 import functools
 import logging
 from functools import cached_property
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast
+from typing import Any, Callable, Collection, Dict, List, Optional, Tuple, Union, cast
 
 import aiobotocore.client
 import boto3.dynamodb.types
@@ -257,7 +257,7 @@ class DynamoDB:
         self._aws: AWSManager = aws
         self.table_name = table_name
 
-        self.item_builder = DynamoDBItemFactory(
+        self.item_factory = DynamoDBItemFactory(
             table_name=table_name, pk_attribute_name=self.PK_ATTRIBUTE_NAME
         )
 
@@ -281,7 +281,7 @@ class DynamoDB:
         """
         kwargs = {
             "TableName": self.table_name,
-            "Key": {self.PK_ATTRIBUTE_NAME: self.item_builder.serialize(pk)},
+            "Key": {self.PK_ATTRIBUTE_NAME: self.item_factory.serialize(pk)},
         }
 
         if fields:
@@ -296,7 +296,7 @@ class DynamoDB:
         # data and there will be no Item element in the response.
         if item := response.get("Item"):
             return {
-                k: self.item_builder.deserialize(v)
+                k: self.item_factory.deserialize(v)
                 for k, v in item.items()
                 if k != self.PK_ATTRIBUTE_NAME
             }
@@ -325,7 +325,7 @@ class DynamoDB:
         See Also:
             https://botocore.amazonaws.com/v1/documentation/api/latest/reference/services/dynamodb.html#DynamoDB.Client.put_item
         """
-        item = self.item_builder.put_idempotency_item(pk=pk, data=data)
+        item = self.item_factory.put_idempotency_item(pk=pk, data=data)
         await self._client.put_item(**item["Put"])
 
     async def table_exists(self) -> bool:
@@ -421,7 +421,7 @@ class DynamoDB:
             ) from e
 
     @handle_botocore_exceptions()
-    async def transaction_write_items(self, items: List[Dict[str, Any]]) -> None:
+    async def transaction_write_items(self, items: Collection[Dict[str, Any]]) -> None:
         """Is a synchronous write operation that groups up to 25 action requests.
 
         The actions are completed atomically so that either all of them succeed,
@@ -518,7 +518,7 @@ class DynamoDB:
         """
         await self._client.delete_item(
             TableName=self.table_name,
-            Key={self.PK_ATTRIBUTE_NAME: self.item_builder.serialize(pk)},
+            Key={self.PK_ATTRIBUTE_NAME: self.item_factory.serialize(pk)},
             ConditionExpression="attribute_exists(#key)",
             ExpressionAttributeNames={"#key": self.PK_ATTRIBUTE_NAME},
         )

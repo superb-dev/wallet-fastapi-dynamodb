@@ -4,7 +4,7 @@ import pydantic
 
 
 class Wallet(pydantic.BaseModel):
-    """Actual information about wallet state."""
+    """Response information about wallet state."""
 
     id: pydantic.StrictStr = pydantic.Field(description="Wallet unique identifier")
     balance: str = pydantic.Field(
@@ -19,11 +19,15 @@ class WalletCreate(pydantic.BaseModel):
 
 
 class WalletAmountWithNonce(pydantic.BaseModel):
-    """Idempotency amount request."""
+    """Base wallet operation request.
+
+    Contains amount and nonce to guarantee idempotency of the request.
+    """
 
     amount: str = pydantic.Field(
         ...,
         min_length=1,
+        max_length=20,  # Can be increased up to the storage limit: 9.9(9)E+125
         regex=r"\d+",
         strict=True,
         description="Amount of funds in 1/million of the currency unit. USD.",

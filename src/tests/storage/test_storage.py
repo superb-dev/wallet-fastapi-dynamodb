@@ -104,6 +104,9 @@ class TestStorage:
     async def test_transaction_write_items(self, storage):
         assert False
 
+    async def test_transaction_write_items_more_than_batch_size(self, storage):
+        assert False
+
     async def test_transaction_write_items_conflict(self, storage):
         assert False
 

@@ -1,3 +1,4 @@
+import logging
 from contextlib import AsyncExitStack
 from types import TracebackType
 from typing import Optional, Type
@@ -8,10 +9,11 @@ from botocore.config import Config
 
 from core.config import settings
 
+logger = logging.getLogger(__name__)
+
 
 class AWSManager:
-    """
-    Provides common interface for the amazon API services
+    """Provides common interface for the Amazon API services
 
     Example:
         async with AWSManager() as manager:
@@ -29,10 +31,12 @@ class AWSManager:
     @property
     def dynamodb(self) -> aiobotocore.client.AioBaseClient:
         if self._dynamodb_client is None or not self.initialized:
-            raise ValueError(
+            msg = (
                 "Dynamodb is not initialized. "
                 "It is not allowed to use without context manager"
             )
+            logger.error(msg)
+            raise ValueError(msg)
 
         return self._dynamodb_client
 
@@ -42,7 +46,9 @@ class AWSManager:
 
     async def initialize(self) -> None:
         if self.initialized:
-            raise ValueError("Already initialized.")
+            msg = "AWS manager was already initialized."
+            logger.error(msg)
+            raise ValueError(msg)
 
         self.initialized = True
         session = self._get_session()

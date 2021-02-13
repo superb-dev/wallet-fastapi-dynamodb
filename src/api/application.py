@@ -11,9 +11,11 @@ from storage import exceptions
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
-    description="The Wallet API is an simple payments system with capabilities to "
-    "transfer funds, deposit, and check balance. "
-    "Build to be highly robust and highly available.",
+    description=(
+        "The Wallet API is an simple payments system with capabilities to "
+        "transfer funds, deposit, and check balance. "
+        "Build to be robust and highly available."
+    ),
     version=settings.PROJECT_VERSION,
     redoc_url=None,
 )
@@ -44,6 +46,7 @@ async def wallet_storage_exception_handler(
 
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
+
 aws_manager: Optional[AWSManager] = None
 
 

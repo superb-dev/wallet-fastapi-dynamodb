@@ -74,7 +74,7 @@ class TestWalletAPI:
         assert response.status_code == 204, response.json()
         assert await wallet.get_balance() == 1000
 
-    @pytest.mark.parametrize("invalid_amount", ["-1000", -100, "str"])
+    @pytest.mark.parametrize("invalid_amount", ["-1000", -100, "str", 10 ** 21])
     async def test_deposit_negative_amount(
         self, client: AsyncClient, wallet, invalid_amount
     ) -> None:
@@ -182,7 +182,7 @@ class TestWalletAPI:
         }
         assert await wallet.get_balance() == 1000
 
-    @pytest.mark.parametrize("invalid_amount", ["-1000", -100, "str"])
+    @pytest.mark.parametrize("invalid_amount", ["-1000", -100, "str", 10 ** 21])
     async def test_transfer_invalid_amount(
         self, client: AsyncClient, wallet, wallet_factory, invalid_amount
     ) -> None:

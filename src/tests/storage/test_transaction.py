@@ -38,12 +38,14 @@ class TestTransaction:
         )
 
         datetime_mock = mock.Mock(wraps=datetime.datetime)
-        datetime_mock.utcnow.return_value = datetime.datetime(2022, 1, 1)
+        datetime_mock.utcnow.return_value = datetime.datetime(
+            2022, 1, 1, tzinfo=datetime.timezone.utc
+        )
         with mock.patch("storage.models.datetime.datetime", new=datetime_mock):
-            assert transaction.ttl == 1640986200
+            assert transaction.ttl == 1640997000
 
         # cached and not change each time
-        assert transaction.ttl == 1640986200
+        assert transaction.ttl == 1640997000
 
     def test_as_dict(self):
         pk = models.Wallet.generate_wallet_id()
@@ -56,12 +58,14 @@ class TestTransaction:
         )
 
         datetime_mock = mock.Mock(wraps=datetime.datetime)
-        datetime_mock.utcnow.return_value = datetime.datetime(2022, 1, 1)
+        datetime_mock.utcnow.return_value = datetime.datetime(
+            2022, 1, 1, tzinfo=datetime.timezone.utc
+        )
 
         with mock.patch("storage.models.datetime.datetime", new=datetime_mock):
             assert transaction.as_dict() == {
                 "data": {"balance": 100},
-                "ttl": 1640986200,
+                "ttl": 1640997000,
                 "type": "transfer",
             }
 
@@ -75,11 +79,13 @@ class TestTransaction:
         )
 
         datetime_mock = mock.Mock(wraps=datetime.datetime)
-        datetime_mock.utcnow.return_value = datetime.datetime(2022, 1, 1)
+        datetime_mock.utcnow.return_value = datetime.datetime(
+            2022, 1, 1, tzinfo=datetime.timezone.utc
+        )
 
         with mock.patch("storage.models.datetime.datetime", new=datetime_mock):
             assert transaction.as_dict() == {
                 "data": {"balance": 100},
-                "ttl": 1640986200,
+                "ttl": 1640997000,
                 "type": "transfer",
             }

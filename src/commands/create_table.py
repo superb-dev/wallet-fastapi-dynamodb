@@ -9,7 +9,9 @@ logger = logging.getLogger(__name__)
 
 
 async def main() -> None:
+    logging.basicConfig(level=settings.LOG_LEVEL.value)
     logger.info("begin")
+
     async with AWSManager() as aws:
         table_name = settings.WALLET_TABLE_NAME
 
@@ -26,6 +28,5 @@ async def main() -> None:
         logger.info("end")
 
 
-if __name__ == "__main__":
-    logging.basicConfig(level=settings.LOG_LEVEL.value)
+if __name__ == "__main__":  # pragma: no cover
     asyncio.run(main())

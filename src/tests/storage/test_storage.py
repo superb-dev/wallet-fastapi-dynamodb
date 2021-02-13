@@ -1,4 +1,5 @@
 import uuid
+from unittest import mock
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -102,19 +103,110 @@ class TestStorage:
             await storage.delete(pk)
 
     async def test_transaction_write_items(self, storage):
-        assert False
+        await storage.transaction_write_items(
+            [
+                storage.item_factory.put_idempotency_item(
+                    "test_transaction_write_items", {"arb": "value"}
+                )
+            ]
+        )
+
+        assert await storage.get("test_transaction_write_items") == {"arb": "value"}
+
+    async def test_transaction_write_items_invalid(self, storage):
+        pass
 
     async def test_transaction_write_items_more_than_batch_size(self, storage):
-        assert False
+        with pytest.raises(ValueError):
+            await storage.transaction_write_items(
+                items=[{}] * (storage.MAX_TRANSACTION_WRITE_BATCH_SIZE + 1)
+            )
 
     async def test_transaction_write_items_conflict(self, storage):
-        assert False
+        # mock due to TransactionConflictExceptions are not thrown by
+        # downloadable DynamoDB for transactional APIs.
+        exc = storage._client.exceptions.TransactionConflictException(
+            error_response={
+                "Error": {
+                    "Code": "TransactionConflictException",
+                    "Message": "Conflict occurred",
+                }
+            },
+            operation_name="Put",
+        )
+
+        with pytest.raises(
+            exceptions.TransactionConflictError, match="Conflict occurred"
+        ):
+            with patch.object(
+                storage._client,
+                "transact_write_items",
+                mock.AsyncMock(side_effect=exc),
+            ):
+                await storage.transaction_write_items([{}])
 
     async def test_transaction_write_items_conditions_check_failed(self, storage):
-        assert False
+        pk = "transaction_write_items_conditions"
+        await storage.create(pk=pk, data={"arb": 1})
+
+        with pytest.raises(exceptions.TransactionMultipleError) as e:
+            await storage.transaction_write_items(
+                [storage.item_factory.put_idempotency_item(pk=pk, data={})]
+            )
+
+        assert len(e.value.errors) == 1
+        assert isinstance(e.value.errors[0], exceptions.ConditionalCheckFailedError)
+
+        # not changed
+        assert await storage.get(pk) == {"arb": 1}
 
     async def test_transaction_write_items_over_provisioned(self, storage):
-        assert False
 
-    async def test_transaction_write_items_throttling(self, storage):
-        assert False
+        exc = storage._client.exceptions.ProvisionedThroughputExceededException(
+            error_response={
+                "Error": {
+                    "Code": "ProvisionedThroughputExceededException",
+                    "Message": (
+                        "The level of configured provisioned throughput for "
+                        "the table was exceeded. Consider increasing your "
+                        "provisioning level with the UpdateTable API"
+                    ),
+                }
+            },
+            operation_name="transact_write_items",
+        )
+
+        # todo: parse exception type
+        with pytest.raises(
+            exceptions.UnknownStorageError,
+            match="provisioned throughput for the table was exceeded",
+        ):
+            with patch.object(
+                storage._client,
+                "transact_write_items",
+                mock.AsyncMock(side_effect=exc),
+            ):
+                await storage.transaction_write_items([{}])
+
+    async def test_transaction_write_items_already_in_progress(self, storage):
+        exc = storage._client.exceptions.TransactionInProgressException(
+            error_response={
+                "Error": {
+                    "Code": "TransactionInProgressException",
+                    "Message": (
+                        "The transaction with the given request "
+                        "token is already in progress."
+                    ),
+                }
+            },
+            operation_name="transact_write_items",
+        )
+
+        # todo: parse exception type
+        with pytest.raises(exceptions.UnknownStorageError, match="already in progress"):
+            with patch.object(
+                storage._client,
+                "transact_write_items",
+                mock.AsyncMock(side_effect=exc),
+            ):
+                await storage.transaction_write_items([{}])

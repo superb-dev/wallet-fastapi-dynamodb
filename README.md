@@ -154,8 +154,9 @@ Obviously, this limit can be increased by more providing more WCU, ex. if we inc
 20000 to 40000, then limit will be increase corresponded, from 333 to 666 ops, 
 but on the other hand, this will dramatically increase the costs.
 
-Actually, it is not true due to DynamoDB replicates the data across multiple partitions, 
-but to do not make our storage irresponsible, let's keep in mind those numbers.
+:warning: Actually, it **is not true** due to DynamoDB replicates the data across multiple partitions,
+and DynamoDB supports [Adaptive Capacity](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/bp-partition-key-design.html#bp-partition-key-partitions-adaptive)
+anyway to do not make our storage irresponsible, let's keep in mind those numbers.
 
 In the future, the system needs to throttle such requests, 
 and return `429 Too Many Requests` error to the client.
